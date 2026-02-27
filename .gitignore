@@ -1,0 +1,62 @@
+# 通用忽略项
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE 配置文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 临时文件
+/tmp
+/logs
+
+# 后端 Go 项目忽略项
+# 编译生成的二进制文件
+backend/cmd/server/server
+backend/cmd/server/server.exe
+
+# 依赖包
+vendor/
+
+# 环境变量文件
+backend/.env
+
+# 日志文件
+backend/logs/
+
+# 前端 React 项目忽略项
+# 依赖包
+frontend/node_modules/
+
+# 构建输出目录
+frontend/dist/
+
+# 环境变量文件
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# 日志文件
+frontend/logs/
+
+# npm 相关文件
+frontend/package-lock.json
+frontend/yarn.lock
+frontend/yarn-error.log
+
+# 编辑器目录和文件
+frontend/.vscode/
+frontend/.idea/
+
+# 测试覆盖率报告
+frontend/coverage/
+
+# 临时文件
+frontend/temp/
+frontend/tmp/
