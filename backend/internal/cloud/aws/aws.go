@@ -9,18 +9,26 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/eks"
+	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // AWSProvider AWS云平台实现
 type AWSProvider struct {
-	accessKey string
-	secretKey string
-	region    string
-	ec2Client *ec2.Client
-	iamClient *iam.Client
-	s3Client  *s3.Client
+	accessKey   string
+	secretKey   string
+	region      string
+	ec2Client   *ec2.Client
+	iamClient   *iam.Client
+	s3Client    *s3.Client
+	elbv2Client *elasticloadbalancingv2.Client
+	eksClient   *eks.Client
+	kmsClient   *kms.Client
+	rdsClient   *rds.Client
 }
 
 // NewAWSProvider 创建AWS云平台实例
@@ -67,6 +75,10 @@ func (p *AWSProvider) Init(accessKey, secretKey, region string) error {
 	p.ec2Client = ec2.NewFromConfig(cfg)
 	p.iamClient = iam.NewFromConfig(cfg)
 	p.s3Client = s3.NewFromConfig(cfg)
+	p.elbv2Client = elasticloadbalancingv2.NewFromConfig(cfg)
+	p.eksClient = eks.NewFromConfig(cfg)
+	p.kmsClient = kms.NewFromConfig(cfg)
+	p.rdsClient = rds.NewFromConfig(cfg)
 
 	return nil
 }
@@ -196,6 +208,234 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			result["roles"] = roles
 		}
 
+	case "vpc":
+		// 枚举VPC资源
+		var allVPCs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPC (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create VPC client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的VPC
+			vpcs, err := regionProvider.enumerateVPCs()
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPC (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate VPCs in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的VPC添加到总列表
+			for _, vpc := range vpcs {
+				// 添加区域信息
+				if vpcMap, ok := vpc.(map[string]interface{}); ok {
+					vpcMap["region"] = region
+					allVPCs = append(allVPCs, vpcMap)
+				}
+			}
+		}
+
+		if len(allVPCs) > 0 {
+			result["vpcs"] = allVPCs
+		} else {
+			result["vpcs"] = []interface{}{}
+		}
+
+	case "route":
+		// 枚举路由表资源
+		var allRouteTables []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Route Tables (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Route Tables client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的路由表
+			routeTables, err := regionProvider.enumerateRouteTables()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Route Tables (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Route Tables in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的路由表添加到总列表
+			for _, rt := range routeTables {
+				// 添加区域信息
+				if rtMap, ok := rt.(map[string]interface{}); ok {
+					rtMap["region"] = region
+					allRouteTables = append(allRouteTables, rtMap)
+				}
+			}
+		}
+
+		if len(allRouteTables) > 0 {
+			result["routeTables"] = allRouteTables
+		} else {
+			result["routeTables"] = []interface{}{}
+		}
+
+	case "elb":
+		// 枚举ELB资源
+		var allELBs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("ELB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create ELB client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的ELB
+			elbs, err := regionProvider.enumerateELBs()
+			if err != nil {
+				errorMsg := fmt.Sprintf("ELB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate ELBs in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的ELB添加到总列表
+			for _, elb := range elbs {
+				// 添加区域信息
+				if elbMap, ok := elb.(map[string]interface{}); ok {
+					elbMap["region"] = region
+					allELBs = append(allELBs, elbMap)
+				}
+			}
+		}
+
+		if len(allELBs) > 0 {
+			result["elbs"] = allELBs
+		} else {
+			result["elbs"] = []interface{}{}
+		}
+
+	case "eks":
+		// 枚举EKS集群
+		var allClusters []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("EKS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create EKS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的EKS集群
+			clusters, err := regionProvider.enumerateEKSClusters()
+			if err != nil {
+				errorMsg := fmt.Sprintf("EKS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate EKS clusters in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的EKS集群添加到总列表
+			for _, cluster := range clusters {
+				// 添加区域信息
+				if clusterMap, ok := cluster.(map[string]interface{}); ok {
+					clusterMap["region"] = region
+					allClusters = append(allClusters, clusterMap)
+				}
+			}
+		}
+
+		if len(allClusters) > 0 {
+			result["eksClusters"] = allClusters
+		} else {
+			result["eksClusters"] = []interface{}{}
+		}
+
+	case "kms":
+		// 枚举KMS密钥
+		var allKeys []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("KMS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create KMS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的KMS密钥
+			keys, err := regionProvider.enumerateKMSKeys()
+			if err != nil {
+				errorMsg := fmt.Sprintf("KMS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate KMS keys in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的KMS密钥添加到总列表
+			for _, key := range keys {
+				// 添加区域信息
+				if keyMap, ok := key.(map[string]interface{}); ok {
+					keyMap["region"] = region
+					allKeys = append(allKeys, keyMap)
+				}
+			}
+		}
+
+		if len(allKeys) > 0 {
+			result["kmsKeys"] = allKeys
+		} else {
+			result["kmsKeys"] = []interface{}{}
+		}
+
+	case "rds":
+		// 枚举RDS数据库实例
+		var allInstances []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("RDS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create RDS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的RDS实例
+			instances, err := regionProvider.enumerateRDSInstances()
+			if err != nil {
+				errorMsg := fmt.Sprintf("RDS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate RDS instances in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的RDS实例添加到总列表
+			for _, instance := range instances {
+				// 添加区域信息
+				if instanceMap, ok := instance.(map[string]interface{}); ok {
+					instanceMap["region"] = region
+					allInstances = append(allInstances, instanceMap)
+				}
+			}
+		}
+
+		if len(allInstances) > 0 {
+			result["rdsInstances"] = allInstances
+		} else {
+			result["rdsInstances"] = []interface{}{}
+		}
+
 	case "all":
 		// 枚举所有资源
 
@@ -267,6 +507,228 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			errors = append(errors, errorMsg)
 			fmt.Printf("Warning: Failed to enumerate IAM roles: %v\n", err)
 			result["roles"] = []interface{}{}
+		}
+
+		// 尝试枚举VPC资源
+		var allVPCs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPC (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create VPC client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的VPC
+			vpcs, err := regionProvider.enumerateVPCs()
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPC (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate VPCs in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的VPC添加到总列表
+			for _, vpc := range vpcs {
+				// 添加区域信息
+				if vpcMap, ok := vpc.(map[string]interface{}); ok {
+					vpcMap["region"] = region
+					allVPCs = append(allVPCs, vpcMap)
+				}
+			}
+		}
+
+		if len(allVPCs) > 0 {
+			result["vpcs"] = allVPCs
+		} else {
+			result["vpcs"] = []interface{}{}
+		}
+
+		// 尝试枚举路由表资源
+		var allRouteTables []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Route Tables (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Route Tables client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的路由表
+			routeTables, err := regionProvider.enumerateRouteTables()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Route Tables (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Route Tables in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的路由表添加到总列表
+			for _, rt := range routeTables {
+				// 添加区域信息
+				if rtMap, ok := rt.(map[string]interface{}); ok {
+					rtMap["region"] = region
+					allRouteTables = append(allRouteTables, rtMap)
+				}
+			}
+		}
+
+		if len(allRouteTables) > 0 {
+			result["routeTables"] = allRouteTables
+		} else {
+			result["routeTables"] = []interface{}{}
+		}
+
+		// 尝试枚举ELB资源
+		var allELBs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("ELB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create ELB client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的ELB
+			elbs, err := regionProvider.enumerateELBs()
+			if err != nil {
+				errorMsg := fmt.Sprintf("ELB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate ELBs in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的ELB添加到总列表
+			for _, elb := range elbs {
+				// 添加区域信息
+				if elbMap, ok := elb.(map[string]interface{}); ok {
+					elbMap["region"] = region
+					allELBs = append(allELBs, elbMap)
+				}
+			}
+		}
+
+		if len(allELBs) > 0 {
+			result["elbs"] = allELBs
+		} else {
+			result["elbs"] = []interface{}{}
+		}
+
+		// 尝试枚举EKS集群
+		var allClusters []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("EKS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create EKS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的EKS集群
+			clusters, err := regionProvider.enumerateEKSClusters()
+			if err != nil {
+				errorMsg := fmt.Sprintf("EKS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate EKS clusters in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的EKS集群添加到总列表
+			for _, cluster := range clusters {
+				// 添加区域信息
+				if clusterMap, ok := cluster.(map[string]interface{}); ok {
+					clusterMap["region"] = region
+					allClusters = append(allClusters, clusterMap)
+				}
+			}
+		}
+
+		if len(allClusters) > 0 {
+			result["eksClusters"] = allClusters
+		} else {
+			result["eksClusters"] = []interface{}{}
+		}
+
+		// 尝试枚举KMS密钥
+		var allKeys []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("KMS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create KMS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的KMS密钥
+			keys, err := regionProvider.enumerateKMSKeys()
+			if err != nil {
+				errorMsg := fmt.Sprintf("KMS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate KMS keys in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的KMS密钥添加到总列表
+			for _, key := range keys {
+				// 添加区域信息
+				if keyMap, ok := key.(map[string]interface{}); ok {
+					keyMap["region"] = region
+					allKeys = append(allKeys, keyMap)
+				}
+			}
+		}
+
+		if len(allKeys) > 0 {
+			result["kmsKeys"] = allKeys
+		} else {
+			result["kmsKeys"] = []interface{}{}
+		}
+
+		// 尝试枚举RDS数据库实例
+		var allRDSInstances []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("RDS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create RDS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的RDS实例
+			instances, err := regionProvider.enumerateRDSInstances()
+			if err != nil {
+				errorMsg := fmt.Sprintf("RDS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate RDS instances in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的RDS实例添加到总列表
+			for _, instance := range instances {
+				// 添加区域信息
+				if instanceMap, ok := instance.(map[string]interface{}); ok {
+					instanceMap["region"] = region
+					allRDSInstances = append(allRDSInstances, instanceMap)
+				}
+			}
+		}
+
+		if len(allRDSInstances) > 0 {
+			result["rdsInstances"] = allRDSInstances
+		} else {
+			result["rdsInstances"] = []interface{}{}
 		}
 
 	default:
@@ -523,6 +985,224 @@ func (p *AWSProvider) enumerateIAMRoles() ([]interface{}, error) {
 	}
 
 	return roles, nil
+}
+
+// enumerateVPCs 枚举VPC资源
+func (p *AWSProvider) enumerateVPCs() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取VPC列表
+	input := &ec2.DescribeVpcsInput{}
+	response, err := p.ec2Client.DescribeVpcs(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe VPCs: %w", err)
+	}
+
+	var vpcs []interface{}
+	for _, vpc := range response.Vpcs {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range vpc.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		vpcs = append(vpcs, map[string]interface{}{
+			"vpcId":     *vpc.VpcId,
+			"cidrBlock": *vpc.CidrBlock,
+			"state":     string(vpc.State),
+			"isDefault": *vpc.IsDefault,
+			"tags":      tags,
+			"ownerId":   *vpc.OwnerId,
+		})
+	}
+
+	return vpcs, nil
+}
+
+// enumerateRouteTables 枚举路由表资源
+func (p *AWSProvider) enumerateRouteTables() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取路由表列表
+	input := &ec2.DescribeRouteTablesInput{}
+	response, err := p.ec2Client.DescribeRouteTables(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe route tables: %w", err)
+	}
+
+	var routeTables []interface{}
+	for _, rt := range response.RouteTables {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range rt.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		// 提取路由信息
+		var routes []interface{}
+		for _, route := range rt.Routes {
+			routeInfo := map[string]interface{}{
+				"destinationCidrBlock": route.DestinationCidrBlock,
+				"gatewayId":            route.GatewayId,
+				"state":                string(route.State),
+			}
+			routes = append(routes, routeInfo)
+		}
+
+		routeTables = append(routeTables, map[string]interface{}{
+			"routeTableId": *rt.RouteTableId,
+			"vpcId":        *rt.VpcId,
+			"routes":       routes,
+			"tags":         tags,
+		})
+	}
+
+	return routeTables, nil
+}
+
+// enumerateELBs 枚举ELB资源
+func (p *AWSProvider) enumerateELBs() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取ELB列表
+	input := &elasticloadbalancingv2.DescribeLoadBalancersInput{}
+	response, err := p.elbv2Client.DescribeLoadBalancers(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe load balancers: %w", err)
+	}
+
+	var elbs []interface{}
+	for _, elb := range response.LoadBalancers {
+		elbs = append(elbs, map[string]interface{}{
+			"loadBalancerName":  *elb.LoadBalancerName,
+			"loadBalancerArn":   *elb.LoadBalancerArn,
+			"type":              string(elb.Type),
+			"dnsName":           elb.DNSName,
+			"state":             elb.State.Code,
+			"availabilityZones": elb.AvailabilityZones,
+			"securityGroups":    elb.SecurityGroups,
+		})
+	}
+
+	return elbs, nil
+}
+
+// enumerateEKSClusters 枚举EKS集群
+func (p *AWSProvider) enumerateEKSClusters() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取EKS集群列表
+	input := &eks.ListClustersInput{}
+	response, err := p.eksClient.ListClusters(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list EKS clusters: %w", err)
+	}
+
+	var clusters []interface{}
+	for _, clusterName := range response.Clusters {
+		// 获取每个集群的详细信息
+		describeInput := &eks.DescribeClusterInput{
+			Name: aws.String(clusterName),
+		}
+		describeResponse, err := p.eksClient.DescribeCluster(ctx, describeInput)
+		if err != nil {
+			// 如果获取详细信息失败，继续处理下一个集群
+			continue
+		}
+
+		cluster := describeResponse.Cluster
+		clusters = append(clusters, map[string]interface{}{
+			"name":               *cluster.Name,
+			"arn":                *cluster.Arn,
+			"version":            *cluster.Version,
+			"status":             string(cluster.Status),
+			"endpoint":           cluster.Endpoint,
+			"roleArn":            cluster.RoleArn,
+			"createdAt":          cluster.CreatedAt,
+			"resourcesVpcConfig": cluster.ResourcesVpcConfig,
+		})
+	}
+
+	return clusters, nil
+}
+
+// enumerateKMSKeys 枚举KMS密钥
+func (p *AWSProvider) enumerateKMSKeys() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取KMS密钥列表
+	input := &kms.ListKeysInput{}
+	response, err := p.kmsClient.ListKeys(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list KMS keys: %w", err)
+	}
+
+	var keys []interface{}
+	for _, key := range response.Keys {
+		// 获取每个密钥的详细信息
+		describeInput := &kms.DescribeKeyInput{
+			KeyId: key.KeyId,
+		}
+		describeResponse, err := p.kmsClient.DescribeKey(ctx, describeInput)
+		if err != nil {
+			// 如果获取详细信息失败，继续处理下一个密钥
+			continue
+		}
+
+		keys = append(keys, map[string]interface{}{
+			"keyId":        *describeResponse.KeyMetadata.KeyId,
+			"arn":          *describeResponse.KeyMetadata.Arn,
+			"creationDate": describeResponse.KeyMetadata.CreationDate,
+			"description":  describeResponse.KeyMetadata.Description,
+			"keyState":     string(describeResponse.KeyMetadata.KeyState),
+			"keyUsage":     string(describeResponse.KeyMetadata.KeyUsage),
+		})
+	}
+
+	return keys, nil
+}
+
+// enumerateRDSInstances 枚举RDS数据库实例
+func (p *AWSProvider) enumerateRDSInstances() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取RDS实例列表
+	input := &rds.DescribeDBInstancesInput{}
+	response, err := p.rdsClient.DescribeDBInstances(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe RDS instances: %w", err)
+	}
+
+	var instances []interface{}
+	for _, instance := range response.DBInstances {
+		instances = append(instances, map[string]interface{}{
+			"dbInstanceIdentifier":  *instance.DBInstanceIdentifier,
+			"dbInstanceArn":         *instance.DBInstanceArn,
+			"dbInstanceClass":       *instance.DBInstanceClass,
+			"engine":                *instance.Engine,
+			"engineVersion":         *instance.EngineVersion,
+			"status":                *instance.DBInstanceStatus,
+			"endpoint":              instance.Endpoint,
+			"allocatedStorage":      instance.AllocatedStorage,
+			"multiAZ":               *instance.MultiAZ,
+			"backupRetentionPeriod": instance.BackupRetentionPeriod,
+			"vpcSecurityGroups":     instance.VpcSecurityGroups,
+		})
+	}
+
+	return instances, nil
 }
 
 // EscalatePrivileges 权限提升

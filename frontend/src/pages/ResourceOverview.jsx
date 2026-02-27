@@ -129,6 +129,105 @@ const ResourceOverview = () => {
           })
         }
         
+        // 处理 VPC 资源
+        if (result.vpcs && Array.isArray(result.vpcs)) {
+          result.vpcs.forEach(vpc => {
+            allResources.push({
+              id: vpc.vpcId,
+              name: vpc.tags?.Name || vpc.vpcId,
+              type: 'vpc',
+              status: vpc.state,
+              region: vpc.region || credential.region,
+              cidrBlock: vpc.cidrBlock,
+              isDefault: vpc.isDefault,
+              tags: vpc.tags
+            })
+          })
+        }
+        
+        // 处理路由表资源
+        if (result.routeTables && Array.isArray(result.routeTables)) {
+          result.routeTables.forEach(rt => {
+            allResources.push({
+              id: rt.routeTableId,
+              name: rt.tags?.Name || rt.routeTableId,
+              type: 'route',
+              status: 'active',
+              region: rt.region || credential.region,
+              vpcId: rt.vpcId,
+              routes: rt.routes,
+              tags: rt.tags
+            })
+          })
+        }
+        
+        // 处理 ELB 资源
+        if (result.elbs && Array.isArray(result.elbs)) {
+          result.elbs.forEach(elb => {
+            allResources.push({
+              id: elb.loadBalancerArn,
+              name: elb.loadBalancerName,
+              type: 'elb',
+              status: elb.state,
+              region: elb.region || credential.region,
+              elbType: elb.type,
+              dnsName: elb.dnsName,
+              availabilityZones: elb.availabilityZones,
+              securityGroups: elb.securityGroups
+            })
+          })
+        }
+        
+        // 处理 EKS 集群
+        if (result.eksClusters && Array.isArray(result.eksClusters)) {
+          result.eksClusters.forEach(cluster => {
+            allResources.push({
+              id: cluster.arn,
+              name: cluster.name,
+              type: 'eks',
+              status: cluster.status,
+              region: cluster.region || credential.region,
+              version: cluster.version,
+              endpoint: cluster.endpoint,
+              createdAt: cluster.createdAt
+            })
+          })
+        }
+        
+        // 处理 KMS 密钥
+        if (result.kmsKeys && Array.isArray(result.kmsKeys)) {
+          result.kmsKeys.forEach(key => {
+            allResources.push({
+              id: key.keyId,
+              name: key.description || key.keyId,
+              type: 'kms',
+              status: key.keyState,
+              region: key.region || credential.region,
+              keyUsage: key.keyUsage,
+              arn: key.arn,
+              creationDate: key.creationDate
+            })
+          })
+        }
+        
+        // 处理 RDS 数据库实例
+        if (result.rdsInstances && Array.isArray(result.rdsInstances)) {
+          result.rdsInstances.forEach(instance => {
+            allResources.push({
+              id: instance.dbInstanceIdentifier,
+              name: instance.dbInstanceIdentifier,
+              type: 'rds',
+              status: instance.status,
+              region: instance.region || credential.region,
+              engine: instance.engine,
+              engineVersion: instance.engineVersion,
+              dbInstanceClass: instance.dbInstanceClass,
+              allocatedStorage: instance.allocatedStorage,
+              multiAZ: instance.multiAZ
+            })
+          })
+        }
+        
         setResources(allResources)
         message.success('从数据库读取资源成功')
       } else {
@@ -421,7 +520,13 @@ const ResourceOverview = () => {
         const typeMap = {
           ec2: 'EC2 实例',
           s3: 'S3 存储桶',
-          iam: 'IAM 资源'
+          iam: 'IAM 资源',
+          vpc: 'VPC',
+          route: '路由表',
+          elb: '负载均衡器',
+          eks: 'EKS 集群',
+          kms: 'KMS 密钥',
+          rds: 'RDS 数据库'
         }
         return typeMap[type] || type
       }
@@ -432,9 +537,9 @@ const ResourceOverview = () => {
       key: 'status',
       render: (status) => (
         <Text style={{ 
-          color: status === 'running' || status === 'active' ? '#52c41a' : '#ff4d4f' 
+          color: status === 'running' || status === 'active' || status === 'available' ? '#52c41a' : '#ff4d4f' 
         }}>
-          {status === 'running' || status === 'active' ? '活跃' : '非活跃'}
+          {status === 'running' || status === 'active' || status === 'available' ? '活跃' : '非活跃'}
         </Text>
       )
     },
@@ -454,13 +559,56 @@ const ResourceOverview = () => {
     }
   ]
 
-  // 资源类型标签
-  const resourceTabs = [
-    { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> },
-    { key: 'ec2', label: 'EC2 实例', icon: <AppstoreOutlined /> },
-    { key: 's3', label: 'S3 存储桶', icon: <UploadOutlined /> },
-    { key: 'iam', label: 'IAM 资源', icon: <UserOutlined /> }
-  ]
+  // 动态资源类型标签
+  const getResourceTabs = () => {
+    if (!selectedCredential) {
+      return [
+        { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> },
+        { key: 'ec2', label: 'EC2 实例', icon: <AppstoreOutlined /> },
+        { key: 's3', label: 'S3 存储桶', icon: <UploadOutlined /> },
+        { key: 'iam', label: 'IAM 资源', icon: <UserOutlined /> },
+        { key: 'vpc', label: 'VPC', icon: <AppstoreOutlined /> },
+        { key: 'route', label: '路由表', icon: <AppstoreOutlined /> },
+        { key: 'elb', label: '负载均衡器', icon: <AppstoreOutlined /> },
+        { key: 'eks', label: 'EKS 集群', icon: <AppstoreOutlined /> },
+        { key: 'kms', label: 'KMS 密钥', icon: <KeyOutlined /> },
+        { key: 'rds', label: 'RDS 数据库', icon: <DatabaseOutlined /> }
+      ]
+    }
+
+    if (selectedCredential.cloudProvider === 'AWS') {
+      return [
+        { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> },
+        { key: 'ec2', label: 'EC2 实例', icon: <AppstoreOutlined /> },
+        { key: 's3', label: 'S3 存储桶', icon: <UploadOutlined /> },
+        { key: 'iam', label: 'IAM 资源', icon: <UserOutlined /> },
+        { key: 'vpc', label: 'VPC', icon: <AppstoreOutlined /> },
+        { key: 'route', label: '路由表', icon: <AppstoreOutlined /> },
+        { key: 'elb', label: '负载均衡器', icon: <AppstoreOutlined /> },
+        { key: 'eks', label: 'EKS 集群', icon: <AppstoreOutlined /> },
+        { key: 'kms', label: 'KMS 密钥', icon: <KeyOutlined /> },
+        { key: 'rds', label: 'RDS 数据库', icon: <DatabaseOutlined /> }
+      ]
+    } else if (selectedCredential.cloudProvider === '阿里云') {
+      return [
+        { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> },
+        { key: 'ecs', label: 'ECS 实例', icon: <AppstoreOutlined /> },
+        { key: 'oss', label: 'OSS 存储桶', icon: <UploadOutlined /> },
+        { key: 'ram', label: 'RAM 资源', icon: <UserOutlined /> }
+      ]
+    } else if (selectedCredential.cloudProvider === 'GCP') {
+      return [
+        { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> },
+        { key: 'compute', label: 'Compute 实例', icon: <AppstoreOutlined /> },
+        { key: 'storage', label: 'Storage 存储桶', icon: <UploadOutlined /> },
+        { key: 'iam', label: 'IAM 资源', icon: <UserOutlined /> }
+      ]
+    } else {
+      return [
+        { key: 'all', label: '全部资源', icon: <DatabaseOutlined /> }
+      ]
+    }
+  }
 
   return (
     <div>
@@ -542,16 +690,29 @@ const ResourceOverview = () => {
                   </span>
                 </div>
                 {/* 动态生成区域选项 */}
-                {Array.from(new Set(resources.map(resource => resource.region))).map(region => {
+                {Array.from(new Set(resources.map(resource => resource.region)))
+                  .sort((a, b) => {
+                    // 将没有区域的资源放在最后
+                    if (!a) return 1;
+                    if (!b) return -1;
+                    return a.localeCompare(b);
+                  })
+                  .map(region => {
                   // 统计该区域的资源数量
                   const regionResources = resources.filter(r => r.region === region);
                   const ec2Count = regionResources.filter(r => r.type === 'ec2').length;
                   const s3Count = regionResources.filter(r => r.type === 's3').length;
                   const iamCount = regionResources.filter(r => r.type === 'iam').length;
+                  const vpcCount = regionResources.filter(r => r.type === 'vpc').length;
+                  const routeCount = regionResources.filter(r => r.type === 'route').length;
+                  const elbCount = regionResources.filter(r => r.type === 'elb').length;
+                  const eksCount = regionResources.filter(r => r.type === 'eks').length;
+                  const kmsCount = regionResources.filter(r => r.type === 'kms').length;
+                  const rdsCount = regionResources.filter(r => r.type === 'rds').length;
                   
                   return (
                     <div 
-                      key={region}
+                      key={region || 'no-region'}
                       style={{
                         padding: 12,
                         borderRadius: 6,
@@ -564,12 +725,12 @@ const ResourceOverview = () => {
                     >
                       <div style={{ marginBottom: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontWeight: 500 }}>{region}</span>
+                          <span style={{ fontWeight: 500 }}>{region || '无区域'}</span>
                           <span style={{ backgroundColor: selectedRegion === region ? 'rgba(255, 255, 255, 0.3)' : '#e8e8e8', padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>
                             {regionResources.length}
                           </span>
                         </div>
-                        <div style={{ display: 'flex', gap: 8, fontSize: 12, opacity: 0.8 }}>
+                        <div style={{ display: 'flex', gap: 8, fontSize: 12, opacity: 0.8, flexWrap: 'wrap' }}>
                           {ec2Count > 0 && (
                             <div style={{ display: 'flex', alignItems: 'center' }}>
                               <AppstoreOutlined style={{ marginRight: 4, fontSize: 12 }} />
@@ -588,6 +749,42 @@ const ResourceOverview = () => {
                               <span>{iamCount} IAM</span>
                             </div>
                           )}
+                          {vpcCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <AppstoreOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{vpcCount} VPC</span>
+                            </div>
+                          )}
+                          {routeCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <AppstoreOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{routeCount} 路由</span>
+                            </div>
+                          )}
+                          {elbCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <AppstoreOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{elbCount} ELB</span>
+                            </div>
+                          )}
+                          {eksCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <AppstoreOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{eksCount} EKS</span>
+                            </div>
+                          )}
+                          {kmsCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <KeyOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{kmsCount} KMS</span>
+                            </div>
+                          )}
+                          {rdsCount > 0 && (
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <DatabaseOutlined style={{ marginRight: 4, fontSize: 12 }} />
+                              <span>{rdsCount} RDS</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -599,111 +796,145 @@ const ResourceOverview = () => {
             {/* 右侧资源内容 */}
             <div style={{ flex: 1 }}>
               <Tabs activeKey={activeTab} onChange={setActiveTab}>
-              {resourceTabs.map(tab => (
-                <TabPane tab={<><span style={{ marginRight: 8 }}>{tab.icon}</span>{tab.label}</>} key={tab.key}>
-                  <div style={{ marginTop: 16 }}>
-                    {loading ? (
-                      <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                        <Spin size="large" />
-                        <div style={{ marginTop: 16 }}>正在获取资源...</div>
-                      </div>
-                    ) : getFilteredResources().length > 0 ? (
-                      <Table 
-                        columns={resourceColumns} 
-                        dataSource={getFilteredResources()} 
-                        rowKey="id"
-                        pagination={{ pageSize: 10 }}
-                        expandable={{
-                          expandedRowRender: record => {
-                            if (record.type === 's3' && record.objects && record.objects.length > 0) {
-                              return (
-                                <div style={{ padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                                    <Text strong>存储桶文件：</Text>
-                                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                                      <Button 
-                                        type="primary" 
-                                        icon={<DownloadOutlined />}
-                                        onClick={() => handleBatchDownload(record.id)}
-                                        style={{ marginRight: 8 }}
-                                      >
-                                        批量下载
-                                      </Button>
-                                      <Button 
-                                        type="primary" 
-                                        icon={<DownloadOutlined />}
-                                        onClick={() => handleDownloadAllFiles(record.id, record.objects)}
-                                        style={{ marginRight: 8 }}
-                                      >
-                                        全部下载
-                                      </Button>
-                                      <Button 
-                                        type="link" 
-                                        onClick={() => toggleSelectAll(record.id, record.objects)}
-                                      >
-                                        {record.objects.every(file => selectedFiles[`${record.id}/${file.key}`]) ? '取消全选' : '全选'}
-                                      </Button>
+              {getResourceTabs().map(tab => {
+                // 计算每个资源类型的数量，根据当前选中的区域
+                let count = 0;
+                // 先根据区域筛选资源
+                const regionFilteredResources = selectedRegion === 'all' 
+                  ? resources 
+                  : resources.filter(resource => resource.region === selectedRegion);
+                
+                // 再根据资源类型筛选
+                if (tab.key === 'all') {
+                  count = regionFilteredResources.length;
+                } else {
+                  count = regionFilteredResources.filter(resource => resource.type === tab.key).length;
+                }
+                
+                return (
+                  <TabPane 
+                    tab={
+                      <>
+                        <span style={{ marginRight: 8 }}>{tab.icon}</span>
+                        <span>{tab.label}</span>
+                        <span style={{
+                          marginLeft: 8,
+                          backgroundColor: '#f0f0f0',
+                          color: '#333',
+                          padding: '2px 8px',
+                          borderRadius: 10,
+                          fontSize: 12
+                        }}>
+                          {count}
+                        </span>
+                      </>
+                    } 
+                    key={tab.key}
+                  >
+                    <div style={{ marginTop: 16 }}>
+                      {loading ? (
+                        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                          <Spin size="large" />
+                          <div style={{ marginTop: 16 }}>正在获取资源...</div>
+                        </div>
+                      ) : getFilteredResources().length > 0 ? (
+                        <Table 
+                          columns={resourceColumns} 
+                          dataSource={getFilteredResources()} 
+                          rowKey="id"
+                          pagination={{ pageSize: 10 }}
+                          expandable={{
+                            expandedRowRender: record => {
+                              if (record.type === 's3' && record.objects && record.objects.length > 0) {
+                                return (
+                                  <div style={{ padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                                      <Text strong>存储桶文件：</Text>
+                                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                                        <Button 
+                                          type="primary" 
+                                          icon={<DownloadOutlined />}
+                                          onClick={() => handleBatchDownload(record.id)}
+                                          style={{ marginRight: 8 }}
+                                        >
+                                          批量下载
+                                        </Button>
+                                        <Button 
+                                          type="primary" 
+                                          icon={<DownloadOutlined />}
+                                          onClick={() => handleDownloadAllFiles(record.id, record.objects)}
+                                          style={{ marginRight: 8 }}
+                                        >
+                                          全部下载
+                                        </Button>
+                                        <Button 
+                                          type="link" 
+                                          onClick={() => toggleSelectAll(record.id, record.objects)}
+                                        >
+                                          {record.objects.every(file => selectedFiles[`${record.id}/${file.key}`]) ? '取消全选' : '全选'}
+                                        </Button>
+                                      </div>
                                     </div>
-                                  </div>
-                                  <Table
-                                  columns={[
-                                    {
-                                      title: (
-                                        <input 
-                                          type="checkbox" 
-                                          checked={record.objects.every(file => selectedFiles[`${record.id}/${file.key}`])} 
-                                          onChange={() => toggleSelectAll(record.id, record.objects)}
-                                        />
-                                      ),
-                                      key: 'checkbox',
-                                      render: (_, fileRecord) => (
-                                        <input 
-                                          type="checkbox" 
-                                          checked={selectedFiles[`${record.id}/${fileRecord.key}`] || false}
-                                          onChange={() => toggleFileSelection(record.id, fileRecord.key)}
-                                        />
-                                      )
-                                    },
-                                      { title: '文件路径', dataIndex: 'key', key: 'key' },
-                                      { title: '大小', dataIndex: 'size', key: 'size' },
-                                      { title: '修改时间', dataIndex: 'lastModified', key: 'lastModified' },
-                                      { 
-                                        title: '操作', 
-                                        key: 'action',
+                                    <Table
+                                    columns={[
+                                      {
+                                        title: (
+                                          <input 
+                                            type="checkbox" 
+                                            checked={record.objects.every(file => selectedFiles[`${record.id}/${file.key}`])} 
+                                            onChange={() => toggleSelectAll(record.id, record.objects)}
+                                          />
+                                        ),
+                                        key: 'checkbox',
                                         render: (_, fileRecord) => (
-                                          <Button 
-                                            type="link" 
-                                            icon={<DownloadOutlined />}
-                                            onClick={() => handleDownloadFile(record.id, fileRecord.key)}
-                                          >
-                                            下载
-                                          </Button>
+                                          <input 
+                                            type="checkbox" 
+                                            checked={selectedFiles[`${record.id}/${fileRecord.key}`] || false}
+                                            onChange={() => toggleFileSelection(record.id, fileRecord.key)}
+                                          />
                                         )
-                                      }
-                                    ]}
-                                    dataSource={record.objects}
-                                    rowKey="key"
-                                    pagination={{ pageSize: 20 }}
-                                    size="small"
-                                  />
-                                </div>
-                              )
+                                      },
+                                        { title: '文件路径', dataIndex: 'key', key: 'key' },
+                                        { title: '大小', dataIndex: 'size', key: 'size' },
+                                        { title: '修改时间', dataIndex: 'lastModified', key: 'lastModified' },
+                                        { 
+                                          title: '操作', 
+                                          key: 'action',
+                                          render: (_, fileRecord) => (
+                                            <Button 
+                                              type="link" 
+                                              icon={<DownloadOutlined />}
+                                              onClick={() => handleDownloadFile(record.id, fileRecord.key)}
+                                            >
+                                              下载
+                                            </Button>
+                                          )
+                                        }
+                                      ]}
+                                      dataSource={record.objects}
+                                      rowKey="key"
+                                      pagination={{ pageSize: 20 }}
+                                      size="small"
+                                    />
+                                  </div>
+                                )
+                              }
+                              return null
+                            },
+                            rowExpandable: record => {
+                              return record.type === 's3' && record.objects && record.objects.length > 0
                             }
-                            return null
-                          },
-                          rowExpandable: record => {
-                            return record.type === 's3' && record.objects && record.objects.length > 0
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                        <Text type="secondary">当前分类下没有资源</Text>
-                      </div>
-                    )}
-                  </div>
-                </TabPane>
-              ))}
+                          }}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                          <Text type="secondary">当前分类下没有资源</Text>
+                        </div>
+                      )}
+                    </div>
+                  </TabPane>
+                )
+              })}
             </Tabs>
             </div>
           </div>
