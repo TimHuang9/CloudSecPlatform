@@ -60,3 +60,5 @@ frontend/coverage/
 # 临时文件
 frontend/temp/
 frontend/tmp/
+backend/cmd/server/redteamsec.db
+backend/cmd/server/__debug_bin517054542
