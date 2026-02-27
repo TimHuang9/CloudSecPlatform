@@ -27,13 +27,13 @@ type AWSProvider struct {
 func NewAWSProvider(accessKey, secretKey, region string) (*AWSProvider, error) {
 	// 保存原始region值，用于判断是否需要遍历所有区域
 	originalRegion := region
-	
+
 	// 如果区域为空，使用默认区域进行初始化
 	initRegion := region
 	if initRegion == "" {
 		initRegion = "us-east-1"
 	}
-	
+
 	provider := &AWSProvider{
 		accessKey: accessKey,
 		secretKey: secretKey,
@@ -578,8 +578,43 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			if !ok {
 				return nil, fmt.Errorf("key is required")
 			}
+
+			// 获取存储桶的实际区域
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			location, err := p.s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+				Bucket: aws.String(resourceID),
+			})
+
+			var bucketRegion string
+			if err == nil {
+				if location.LocationConstraint == "" {
+					bucketRegion = "us-east-1"
+				} else {
+					bucketRegion = string(location.LocationConstraint)
+				}
+			} else {
+				// 如果获取区域失败，使用默认区域
+				bucketRegion = "us-east-1"
+			}
+
+			// 创建使用存储桶实际区域的S3客户端
+			cfg, err := config.LoadDefaultConfig(context.Background(),
+				config.WithRegion(bucketRegion),
+				config.WithCredentialsProvider(&StaticCredentialsProvider{
+					Value:  p.accessKey,
+					Secret: p.secretKey,
+				}),
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create S3 client for bucket region: %w", err)
+			}
+
+			s3Client := s3.NewFromConfig(cfg)
+
 			// 生成预签名的S3 URL
-			presignClient := s3.NewPresignClient(p.s3Client)
+			presignClient := s3.NewPresignClient(s3Client)
 			getObjectInput := &s3.GetObjectInput{
 				Bucket: aws.String(resourceID),
 				Key:    aws.String(key),
@@ -593,6 +628,7 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				"message":      "Download URL generated",
 				"bucket":       resourceID,
 				"key":          key,
+				"region":       bucketRegion,
 				"download_url": presignedURL.URL,
 			}, nil
 		}
@@ -614,6 +650,37 @@ func (p *AWSProvider) listS3Objects(bucketName, prefix string) ([]interface{}, e
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// 获取存储桶的实际区域
+	location, err := p.s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+		Bucket: aws.String(bucketName),
+	})
+
+	var bucketRegion string
+	if err == nil {
+		if location.LocationConstraint == "" {
+			bucketRegion = "us-east-1"
+		} else {
+			bucketRegion = string(location.LocationConstraint)
+		}
+	} else {
+		// 如果获取区域失败，使用默认区域
+		bucketRegion = "us-east-1"
+	}
+
+	// 创建使用存储桶实际区域的S3客户端
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(bucketRegion),
+		config.WithCredentialsProvider(&StaticCredentialsProvider{
+			Value:  p.accessKey,
+			Secret: p.secretKey,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create S3 client for bucket region: %w", err)
+	}
+
+	s3Client := s3.NewFromConfig(cfg)
+
 	// 调用AWS SDK获取S3对象列表
 	input := &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucketName),
@@ -629,7 +696,7 @@ func (p *AWSProvider) listS3Objects(bucketName, prefix string) ([]interface{}, e
 			input.ContinuationToken = continuationToken
 		}
 
-		response, err := p.s3Client.ListObjectsV2(ctx, input)
+		response, err := s3Client.ListObjectsV2(ctx, input)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list S3 objects: %w", err)
 		}
