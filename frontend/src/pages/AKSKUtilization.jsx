@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
-import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin } from 'antd'
-import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, AimOutlined } from '@ant-design/icons'
+import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin, Badge } from 'antd'
+import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, AimOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import axios from 'axios'
 import ReactFlow, { Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -48,6 +48,7 @@ const AKSKUtilization = () => {
   const [privilegeResult, setPrivilegeResult] = useState(null)
   const [takeoverResult, setTakeoverResult] = useState(null)
   const [attackPathData, setAttackPathData] = useState(null)
+  const [downloadTasks, setDownloadTasks] = useState([])
 
   // 模拟数据 - 资源类型
   const resourceTypes = [
@@ -436,35 +437,64 @@ const AKSKUtilization = () => {
       return
     }
 
-    setLoading(true)
+    // 创建下载任务
+    const taskId = Date.now() + Math.random()
+    // 临时路径，稍后会从后端响应中更新
+    const newTask = {
+      id: taskId,
+      bucket: bucket,
+      key: key,
+      status: 'running',
+      progress: 0,
+      downloadPath: '计算中...',
+      startTime: new Date().toISOString()
+    }
+
+    setDownloadTasks(prev => [...prev, newTask])
+
     try {
       // 调用下载 API
-      const response = await api.post('/cloud/operate', {
+      const response = await api.post('/cloud/download', {
         credential_id: selectedCredential.id,
-        resource_type: 's3',
-        action: 'download',
-        resource_id: bucket,
-        params: { key: key }
+        bucket: bucket,
+        key: key
       })
       
-      if (response.data && response.data.result && response.data.result.download_url) {
-        message.success('下载链接生成成功')
-        // 实际下载文件
-        const downloadUrl = response.data.result.download_url
-        const link = document.createElement('a')
-        link.href = downloadUrl
-        link.download = key.split('/').pop() // 使用文件名作为下载文件名
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
+      if (response.data && response.data.success) {
+        // 更新任务的下载路径
+        const actualDownloadPath = response.data.path
+        setDownloadTasks(prev => prev.map(task => 
+          task.id === taskId ? { ...task, downloadPath: actualDownloadPath } : task
+        ))
+
+        // 模拟下载进度
+        let progress = 0
+        const interval = setInterval(() => {
+          progress += 10
+          if (progress <= 100) {
+            setDownloadTasks(prev => prev.map(task => 
+              task.id === taskId ? { ...task, progress } : task
+            ))
+          } else {
+            clearInterval(interval)
+            setDownloadTasks(prev => prev.map(task => 
+              task.id === taskId ? { ...task, status: 'success', progress: 100, endTime: new Date().toISOString() } : task
+            ))
+            message.success(`文件 ${key} 下载成功`)
+          }
+        }, 200)
       } else {
-        message.warning('下载链接生成失败')
+        setDownloadTasks(prev => prev.map(task => 
+          task.id === taskId ? { ...task, status: 'failed', endTime: new Date().toISOString() } : task
+        ))
+        message.warning('下载失败: ' + (response.data?.message || '未知错误'))
       }
     } catch (error) {
       console.error('文件下载失败:', error)
+      setDownloadTasks(prev => prev.map(task => 
+        task.id === taskId ? { ...task, status: 'failed', endTime: new Date().toISOString() } : task
+      ))
       message.error('文件下载失败: ' + (error.response?.data?.error || '未知错误'))
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -1159,6 +1189,72 @@ const AKSKUtilization = () => {
           <div style={{ textAlign: 'center', padding: '80px 0' }}>
             <CloudOutlined style={{ fontSize: '48px', color: '#ff4d4f', marginBottom: 16 }} />
             <Text type="secondary" style={{ fontSize: '16px' }}>请选择一个凭证开始 AKSK 利用</Text>
+          </div>
+        </Card>
+      )}
+
+      {/* 下载任务列表 */}
+      {downloadTasks.length > 0 && (
+        <Card style={{ marginTop: 24 }}>
+          <Title level={4}>下载任务</Title>
+          <div>
+            {downloadTasks.map(task => (
+              <div key={task.id} style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span>
+                    {task.key}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Badge 
+                      status={task.status === 'success' ? 'success' : task.status === 'running' ? 'processing' : 'error'}
+                      text={task.status === 'success' ? '成功' : task.status === 'running' ? '下载中' : '失败'}
+                      style={{ marginRight: 8 }}
+                    />
+                    {task.status === 'success' && (
+                      <Button 
+                        type="link" 
+                        icon={<FolderOpenOutlined />}
+                        onClick={() => {
+                          // 显示下载目录路径，让用户手动打开
+                          message.info(`下载目录: /Users/admin/Documents/Downloads/CloudSecPlatform/${task.bucket}`);
+                        }}
+                      >
+                        打开文件夹
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {task.progress !== undefined && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text>进度</Text>
+                      <Text>{task.progress}%</Text>
+                    </div>
+                    <div style={{ height: 8, backgroundColor: '#f0f0f0', borderRadius: 4 }}>
+                      <div 
+                        style={{
+                          height: '100%',
+                          width: `${task.progress}%`,
+                          backgroundColor: task.status === 'success' ? '#52c41a' : task.status === 'failed' ? '#ff4d4f' : '#1890ff',
+                          borderRadius: 4
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {task.downloadPath && (
+                  <div style={{ marginBottom: 8 }}>
+                    <Text type="secondary">下载路径: {task.downloadPath}</Text>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Text type="secondary">开始时间: {new Date(task.startTime).toLocaleString()}</Text>
+                  {task.endTime && (
+                    <Text type="secondary">结束时间: {new Date(task.endTime).toLocaleString()}</Text>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
       )}

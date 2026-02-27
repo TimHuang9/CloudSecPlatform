@@ -3,8 +3,8 @@ package database
 import (
 	"context"
 
-	"github.com/redteamsec/backend/config"
 	"github.com/redis/go-redis/v9"
+	"github.com/redteamsec/backend/config"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -87,20 +87,20 @@ type CloudCredential struct {
 
 // Task 任务模型
 type Task struct {
-	ID            uint   `gorm:"primaryKey" json:"id"`
-	UserID        uint   `json:"user_id"`
-	CredentialID  uint   `json:"credential_id"`
-	TaskType      string `gorm:"size:50" json:"task_type"`
-	Status        string `gorm:"size:50" json:"status"`
-	Parameters    string `gorm:"type:jsonb" json:"parameters"`
-	StartTime     string `json:"start_time"`
-	EndTime       string `json:"end_time"`
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	UserID       uint   `json:"userId"`
+	CredentialID uint   `json:"credentialId"`
+	TaskType     string `gorm:"size:50" json:"taskType"`
+	Status       string `gorm:"size:50" json:"status"`
+	Parameters   string `gorm:"type:jsonb" json:"parameters"`
+	StartTime    string `json:"startTime"`
+	EndTime      string `json:"endTime"`
 }
 
 // TaskResult 任务结果模型
 type TaskResult struct {
 	ID        uint   `gorm:"primaryKey" json:"id"`
-	TaskID    uint   `json:"task_id"`
+	TaskID    uint   `json:"taskId"`
 	Result    string `gorm:"type:jsonb" json:"result"`
 	Error     string `gorm:"size:255" json:"error"`
 	Timestamp string `json:"timestamp"`

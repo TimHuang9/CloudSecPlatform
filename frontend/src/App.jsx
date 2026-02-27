@@ -7,7 +7,8 @@ import {
   AppstoreOutlined,
   LogoutOutlined,
   DatabaseOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  SettingOutlined
 } from '@ant-design/icons'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -16,6 +17,7 @@ import CredentialManagement from './pages/CredentialManagement'
 import AKSKUtilization from './pages/AKSKUtilization'
 import TaskManagement from './pages/TaskManagement'
 import ResourceOverview from './pages/ResourceOverview'
+import Settings from './pages/Settings'
 
 import { useSelector, useDispatch } from 'react-redux'
 import { logout } from './store/authSlice'
@@ -78,6 +80,12 @@ function App() {
             icon: <DatabaseOutlined style={{ fontSize: '18px' }} />,
             label: '资源总览',
             path: '/resources'
+          },
+          {
+            key: 'settings',
+            icon: <SettingOutlined style={{ fontSize: '18px' }} />,
+            label: '系统配置',
+            path: '/settings'
           },
         ]}
         onClick={({ key, item }) => {
@@ -218,6 +226,7 @@ function App() {
                   <Route path="/aksk" element={<PrivateRoute><AKSKUtilization /></PrivateRoute>} />
                   <Route path="/tasks" element={<PrivateRoute><TaskManagement /></PrivateRoute>} />
                   <Route path="/resources" element={<PrivateRoute><ResourceOverview /></PrivateRoute>} />
+                  <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
                   <Route path="/*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
               </Content>

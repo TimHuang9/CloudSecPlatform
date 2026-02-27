@@ -28,6 +28,9 @@ type Config struct {
 	JWTSecret string
 	JWTExpiry int
 
+	// 下载配置
+	DownloadPath string
+
 	// 环境配置
 	Environment string
 }
@@ -58,6 +61,15 @@ func LoadConfig() (*Config, error) {
 		jwtExpiry = 24
 	}
 
+	// 获取用户主目录
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		homeDir = "/"
+	}
+
+	// 默认下载路径
+	defaultDownloadPath := homeDir + "/Documents/Downloads/CloudSecPlatform"
+
 	return &Config{
 		// 服务器配置
 		ServerHost: getEnv("SERVER_HOST", "0.0.0.0"),
@@ -76,6 +88,9 @@ func LoadConfig() (*Config, error) {
 		// JWT 配置
 		JWTSecret: getEnv("JWT_SECRET", "your-secret-key"),
 		JWTExpiry: jwtExpiry,
+
+		// 下载配置
+		DownloadPath: getEnv("DOWNLOAD_PATH", defaultDownloadPath),
 
 		// 环境配置
 		Environment: getEnv("ENVIRONMENT", "development"),

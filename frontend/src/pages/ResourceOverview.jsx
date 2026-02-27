@@ -166,12 +166,14 @@ const ResourceOverview = () => {
 
     // 创建下载任务
     const taskId = Date.now() + Math.random()
+    // 临时路径，稍后会从后端响应中更新
     const newTask = {
       id: taskId,
       bucket: bucket,
       key: key,
       status: 'running',
       progress: 0,
+      downloadPath: '计算中...',
       startTime: new Date().toISOString()
     }
 
@@ -179,15 +181,19 @@ const ResourceOverview = () => {
 
     try {
       // 调用下载 API
-      const response = await api.post('/cloud/operate', {
+      const response = await api.post('/cloud/download', {
         credential_id: selectedCredential.id,
-        resource_type: 's3',
-        action: 'download',
-        resource_id: bucket,
-        params: { key: key }
+        bucket: bucket,
+        key: key
       })
       
-      if (response.data && response.data.result && response.data.result.download_url) {
+      if (response.data && response.data.success) {
+        // 更新任务的下载路径
+        const actualDownloadPath = response.data.path
+        setDownloadTasks(prev => prev.map(task => 
+          task.id === taskId ? { ...task, downloadPath: actualDownloadPath } : task
+        ))
+
         // 模拟下载进度
         let progress = 0
         const interval = setInterval(() => {
@@ -204,20 +210,11 @@ const ResourceOverview = () => {
             message.success(`文件 ${key} 下载成功`)
           }
         }, 200)
-        
-        // 实际下载文件
-        const downloadUrl = response.data.result.download_url
-        const link = document.createElement('a')
-        link.href = downloadUrl
-        link.download = key.split('/').pop() // 使用文件名作为下载文件名
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
       } else {
         setDownloadTasks(prev => prev.map(task => 
           task.id === taskId ? { ...task, status: 'failed', endTime: new Date().toISOString() } : task
         ))
-        message.warning('下载链接生成失败')
+        message.warning('下载失败: ' + (response.data?.message || '未知错误'))
       }
     } catch (error) {
       console.error('文件下载失败:', error)
@@ -239,23 +236,35 @@ const ResourceOverview = () => {
       return
     }
 
+    // 过滤掉那些 key 等于 bucket 的情况，避免下载存储桶本身
+    const filteredFileKeys = selectedFileKeys.filter(key => {
+      const fileKey = key.replace(`${bucket}/`, '')
+      return fileKey !== bucket
+    })
+
+    if (filteredFileKeys.length === 0) {
+      message.warning('请选择要下载的文件，不要选择存储桶本身')
+      return
+    }
+
     // 创建批量下载任务
     const batchTaskId = Date.now() + Math.random()
     const newBatchTask = {
       id: batchTaskId,
       bucket: bucket,
-      files: selectedFileKeys.map(key => key.replace(`${bucket}/`, '')),
+      files: filteredFileKeys.map(key => key.replace(`${bucket}/`, '')),
       status: 'running',
       progress: 0,
       completed: 0,
-      total: selectedFileKeys.length,
+      total: filteredFileKeys.length,
+      downloadPath: '计算中...',
       startTime: new Date().toISOString()
     }
 
     setDownloadTasks(prev => [...prev, newBatchTask])
 
     // 逐个下载文件
-    selectedFileKeys.forEach((key, index) => {
+    filteredFileKeys.forEach((key, index) => {
       const fileKey = key.replace(`${bucket}/`, '')
       handleDownloadFile(bucket, fileKey)
     })
@@ -267,7 +276,7 @@ const ResourceOverview = () => {
       return newSelectedFiles
     })
 
-    message.success(`开始批量下载 ${selectedFileKeys.length} 个文件`)
+    message.success(`开始批量下载 ${filteredFileKeys.length} 个文件`)
   }
 
   // 全部下载文件
@@ -277,27 +286,36 @@ const ResourceOverview = () => {
       return
     }
 
+    // 过滤掉那些 key 等于 bucket 的情况，避免下载存储桶本身
+    const filteredObjects = objects.filter(file => file.key !== bucket)
+
+    if (filteredObjects.length === 0) {
+      message.warning('存储桶中没有可下载的文件')
+      return
+    }
+
     // 创建批量下载任务
     const batchTaskId = Date.now() + Math.random()
     const newBatchTask = {
       id: batchTaskId,
       bucket: bucket,
-      files: objects.map(file => file.key),
+      files: filteredObjects.map(file => file.key),
       status: 'running',
       progress: 0,
       completed: 0,
-      total: objects.length,
+      total: filteredObjects.length,
+      downloadPath: '计算中...',
       startTime: new Date().toISOString()
     }
 
     setDownloadTasks(prev => [...prev, newBatchTask])
 
     // 逐个下载文件
-    objects.forEach((file, index) => {
+    filteredObjects.forEach((file, index) => {
       handleDownloadFile(bucket, file.key)
     })
 
-    message.success(`开始全部下载 ${objects.length} 个文件`)
+    message.success(`开始全部下载 ${filteredObjects.length} 个文件`)
   }
 
   // 切换文件选择状态
@@ -720,13 +738,24 @@ const ResourceOverview = () => {
                       <Button 
                         type="link" 
                         icon={<FolderOpenOutlined />}
-                        onClick={() => window.open('file://' + window.location.pathname.split('/').slice(0, 3).join('/') + '/Downloads')}
+                        onClick={() => {
+                          // 显示下载目录路径，让用户手动打开
+                          message.info(`下载目录: ${task.downloadPath}`);
+                        }}
                       >
-                        打开文件夹
+                        查看下载路径
                       </Button>
                     )}
                   </div>
                 </div>
+                {task.downloadPath && (
+                  <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: '#f6ffed', borderRadius: 4, border: '1px solid #b7eb8f' }}>
+                    <div style={{ display: 'flex', alignItems: 'center' }}>
+                      <FolderOpenOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+                      <Text strong style={{ color: '#389e0d' }}>下载路径: {task.downloadPath}</Text>
+                    </div>
+                  </div>
+                )}
                 {task.progress !== undefined && (
                   <div style={{ marginBottom: 8 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>

@@ -3,6 +3,10 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -28,6 +32,12 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
+
+	// 添加配置到上下文
+	router.Use(func(c *gin.Context) {
+		c.Set("config", cfg)
+		c.Next()
+	})
 
 	// 创建API组
 	api := router.Group("/api")
@@ -58,17 +68,18 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		authGroup.GET("/tasks/:id/results", getTaskResultsHandler(db))
 
 		// 云平台操作
-			authGroup.POST("/cloud/enumerate", enumerateResourcesHandler(db))
-			authGroup.POST("/cloud/escalate", escalatePrivilegesHandler(db))
-			authGroup.POST("/cloud/operate", operateResourceHandler(db))
-			authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
-			authGroup.POST("/cloud/resources", getResourcesFromDatabaseHandler(db))
+		authGroup.POST("/cloud/enumerate", enumerateResourcesHandler(db))
+		authGroup.POST("/cloud/escalate", escalatePrivilegesHandler(db))
+		authGroup.POST("/cloud/operate", operateResourceHandler(db))
+		authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
+		authGroup.POST("/cloud/resources", getResourcesFromDatabaseHandler(db))
+		authGroup.POST("/cloud/download", downloadFileHandler(db))
 
-			// 结果分析
-			authGroup.GET("/analysis/task-stats", getTaskStatsHandler(db))
-			authGroup.GET("/analysis/vulnerability-stats", getVulnerabilityStatsHandler(db))
-			authGroup.GET("/analysis/resource-stats", getResourceStatsHandler(db))
-			authGroup.GET("/analysis/recent-findings", getRecentFindingsHandler(db))
+		// 结果分析
+		authGroup.GET("/analysis/task-stats", getTaskStatsHandler(db))
+		authGroup.GET("/analysis/vulnerability-stats", getVulnerabilityStatsHandler(db))
+		authGroup.GET("/analysis/resource-stats", getResourceStatsHandler(db))
+		authGroup.GET("/analysis/recent-findings", getRecentFindingsHandler(db))
 	}
 
 	return router
@@ -327,7 +338,7 @@ func createCredentialHandler(db *gorm.DB) gin.HandlerFunc {
 			CloudProvider: input.CloudProvider,
 			AccessKey:     input.AccessKey,
 			SecretKey:     input.SecretKey, // 实际应用中应该加密存储
-			Region:        "", // 不再收集区域信息，设为空字符串
+			Region:        "",              // 不再收集区域信息，设为空字符串
 			Name:          input.Name,
 			Description:   input.Description,
 		}
@@ -465,8 +476,8 @@ func createTaskHandler(db *gorm.DB, redisClient *redis.Client) gin.HandlerFunc {
 		}
 
 		var input struct {
-			CredentialID uint   `json:"credential_id" binding:"required"`
-			TaskType     string `json:"task_type" binding:"required"`
+			CredentialID uint   `json:"credentialId" binding:"required"`
+			TaskType     string `json:"taskType" binding:"required"`
 			Parameters   string `json:"parameters" binding:"required"`
 			Name         string `json:"name" binding:"required"`
 		}
@@ -484,13 +495,13 @@ func createTaskHandler(db *gorm.DB, redisClient *redis.Client) gin.HandlerFunc {
 		}
 
 		task := database.Task{
-			UserID:        userID.(uint),
-			CredentialID:  input.CredentialID,
-			TaskType:      input.TaskType,
-			Status:        "pending",
-			Parameters:    input.Parameters,
-			StartTime:     "",
-			EndTime:       "",
+			UserID:       userID.(uint),
+			CredentialID: input.CredentialID,
+			TaskType:     input.TaskType,
+			Status:       "pending",
+			Parameters:   input.Parameters,
+			StartTime:    "",
+			EndTime:      "",
 		}
 
 		if result := db.Create(&task); result.Error != nil {
@@ -608,17 +619,17 @@ func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 		// 创建任务记录
 		parameters, _ := json.Marshal(map[string]interface{}{
 			"resource_type": input.ResourceType,
-			"region":       region,
+			"region":        region,
 		})
 
 		task := database.Task{
-			UserID:        userID.(uint),
-			CredentialID:  input.CredentialID,
-			TaskType:      "enumerate",
-			Status:        "completed",
-			Parameters:    string(parameters),
-			StartTime:     time.Now().Format(time.RFC3339),
-			EndTime:       time.Now().Format(time.RFC3339),
+			UserID:       userID.(uint),
+			CredentialID: input.CredentialID,
+			TaskType:     "enumerate",
+			Status:       "completed",
+			Parameters:   string(parameters),
+			StartTime:    time.Now().Format(time.RFC3339),
+			EndTime:      time.Now().Format(time.RFC3339),
 		}
 
 		if err := db.Create(&task).Error; err != nil {
@@ -641,11 +652,11 @@ func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"message": "Resource enumeration completed",
-			"credential": credential.Name,
+			"message":       "Resource enumeration completed",
+			"credential":    credential.Name,
 			"resource_type": input.ResourceType,
-			"result": result,
-			"task_id": task.ID,
+			"result":        result,
+			"task_id":       task.ID,
 		})
 	}
 }
@@ -689,9 +700,9 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"message": "Privilege escalation completed",
+			"message":    "Privilege escalation completed",
 			"credential": credential.Name,
-			"result": result,
+			"result":     result,
 		})
 	}
 }
@@ -739,12 +750,12 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"message": "Resource operation completed",
-			"credential": credential.Name,
+			"message":       "Resource operation completed",
+			"credential":    credential.Name,
 			"resource_type": input.ResourceType,
-			"action": input.Action,
-			"resource_id": input.ResourceID,
-			"result": result,
+			"action":        input.Action,
+			"resource_id":   input.ResourceID,
+			"result":        result,
 		})
 	}
 }
@@ -788,9 +799,9 @@ func takeoverCloudHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"message": "Cloud platform takeover completed",
+			"message":    "Cloud platform takeover completed",
 			"credential": credential.Name,
-			"result": result,
+			"result":     result,
 		})
 	}
 }
@@ -842,11 +853,11 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"message": "Resources fetched from database",
+			"message":    "Resources fetched from database",
 			"credential": credential.Name,
-			"result": result,
-			"task_id": task.ID,
-			"timestamp": task.EndTime,
+			"result":     result,
+			"task_id":    task.ID,
+			"timestamp":  task.EndTime,
 		})
 	}
 }
@@ -873,10 +884,10 @@ func getTaskStatsHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, gin.H{
-			"total": total,
-			"success": success,
-			"failed": failed,
-			"running": running,
+			"total":       total,
+			"success":     success,
+			"failed":      failed,
+			"running":     running,
 			"successRate": successRate,
 		})
 	}
@@ -893,39 +904,39 @@ func getVulnerabilityStatsHandler(db *gorm.DB) gin.HandlerFunc {
 		// 模拟数据 - 实际应用中应该从任务结果中分析
 		vulnerabilityStats := []map[string]interface{}{
 			{
-				"name": "AWS",
+				"name":     "AWS",
 				"critical": 2,
-				"high": 5,
-				"medium": 8,
-				"low": 12,
+				"high":     5,
+				"medium":   8,
+				"low":      12,
 			},
 			{
-				"name": "阿里云",
+				"name":     "阿里云",
 				"critical": 1,
-				"high": 3,
-				"medium": 6,
-				"low": 9,
+				"high":     3,
+				"medium":   6,
+				"low":      9,
 			},
 			{
-				"name": "GCP",
+				"name":     "GCP",
 				"critical": 0,
-				"high": 2,
-				"medium": 4,
-				"low": 7,
+				"high":     2,
+				"medium":   4,
+				"low":      7,
 			},
 			{
-				"name": "Azure",
+				"name":     "Azure",
 				"critical": 1,
-				"high": 2,
-				"medium": 3,
-				"low": 5,
+				"high":     2,
+				"medium":   3,
+				"low":      5,
 			},
 			{
-				"name": "腾讯云",
+				"name":     "腾讯云",
 				"critical": 0,
-				"high": 1,
-				"medium": 2,
-				"low": 4,
+				"high":     1,
+				"medium":   2,
+				"low":      4,
 			},
 		}
 
@@ -944,26 +955,26 @@ func getResourceStatsHandler(db *gorm.DB) gin.HandlerFunc {
 		// 模拟数据 - 实际应用中应该从任务结果中分析
 		resourceStats := []map[string]interface{}{
 			{
-				"resource": "EC2 实例",
-				"count": 150,
+				"resource":   "EC2 实例",
+				"count":      150,
 				"vulnerable": 25,
 				"percentage": 16.7,
 			},
 			{
-				"resource": "S3 存储桶",
-				"count": 85,
+				"resource":   "S3 存储桶",
+				"count":      85,
 				"vulnerable": 30,
 				"percentage": 35.3,
 			},
 			{
-				"resource": "IAM 用户",
-				"count": 45,
+				"resource":   "IAM 用户",
+				"count":      45,
 				"vulnerable": 12,
 				"percentage": 26.7,
 			},
 			{
-				"resource": "数据库实例",
-				"count": 25,
+				"resource":   "数据库实例",
+				"count":      25,
 				"vulnerable": 5,
 				"percentage": 20,
 			},
@@ -984,47 +995,158 @@ func getRecentFindingsHandler(db *gorm.DB) gin.HandlerFunc {
 		// 模拟数据 - 实际应用中应该从任务结果中分析
 		recentFindings := []map[string]interface{}{
 			{
-				"id": 1,
-				"title": "AWS S3 存储桶可公开访问",
-				"severity": "high",
+				"id":            1,
+				"title":         "AWS S3 存储桶可公开访问",
+				"severity":      "high",
 				"cloudProvider": "AWS",
-				"timestamp": "2024-01-15 14:30:00",
-				"status": "open",
+				"timestamp":     "2024-01-15 14:30:00",
+				"status":        "open",
 			},
 			{
-				"id": 2,
-				"title": "阿里云 ECS 实例安全组配置过于宽松",
-				"severity": "medium",
+				"id":            2,
+				"title":         "阿里云 ECS 实例安全组配置过于宽松",
+				"severity":      "medium",
 				"cloudProvider": "阿里云",
-				"timestamp": "2024-01-15 13:45:00",
-				"status": "open",
+				"timestamp":     "2024-01-15 13:45:00",
+				"status":        "open",
 			},
 			{
-				"id": 3,
-				"title": "GCP IAM 权限过大",
-				"severity": "critical",
+				"id":            3,
+				"title":         "GCP IAM 权限过大",
+				"severity":      "critical",
 				"cloudProvider": "GCP",
-				"timestamp": "2024-01-15 12:20:00",
-				"status": "closed",
+				"timestamp":     "2024-01-15 12:20:00",
+				"status":        "closed",
 			},
 			{
-				"id": 4,
-				"title": "Azure 存储账户密钥泄露",
-				"severity": "high",
+				"id":            4,
+				"title":         "Azure 存储账户密钥泄露",
+				"severity":      "high",
 				"cloudProvider": "Azure",
-				"timestamp": "2024-01-15 11:10:00",
-				"status": "open",
+				"timestamp":     "2024-01-15 11:10:00",
+				"status":        "open",
 			},
 			{
-				"id": 5,
-				"title": "腾讯云 CAM 角色权限配置错误",
-				"severity": "medium",
+				"id":            5,
+				"title":         "腾讯云 CAM 角色权限配置错误",
+				"severity":      "medium",
 				"cloudProvider": "腾讯云",
-				"timestamp": "2024-01-15 10:05:00",
-				"status": "open",
+				"timestamp":     "2024-01-15 10:05:00",
+				"status":        "open",
 			},
 		}
 
 		c.JSON(200, recentFindings)
+	}
+}
+
+// 下载文件到指定目录
+func downloadFileHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		// 获取配置
+		cfg, exists := c.MustGet("config").(*config.Config)
+		if !exists {
+			c.JSON(500, gin.H{"error": "Config not found"})
+			return
+		}
+
+		var input struct {
+			CredentialID uint   `json:"credential_id" binding:"required"`
+			Bucket       string `json:"bucket" binding:"required"`
+			Key          string `json:"key" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 验证凭证是否属于该用户
+		var credential database.CloudCredential
+		if result := db.Where("id = ? AND user_id = ?", input.CredentialID, userID).First(&credential); result.Error != nil {
+			c.JSON(404, gin.H{"error": "Credential not found"})
+			return
+		}
+
+		// 创建云平台实例
+		provider, err := cloud.NewCloudProvider(credential.CloudProvider, credential.AccessKey, credential.SecretKey, credential.Region)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create cloud provider: " + err.Error()})
+			return
+		}
+
+		// 调用下载操作
+		result, err := provider.OperateResource("s3", "download", input.Bucket, map[string]interface{}{"key": input.Key})
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to download file: " + err.Error()})
+			return
+		}
+
+		// 获取下载URL
+		downloadURL, ok := result["download_url"].(string)
+		if !ok {
+			c.JSON(500, gin.H{"error": "Failed to get download URL"})
+			return
+		}
+
+		// 创建下载目录结构
+		downloadDir := cfg.DownloadPath + "/" + input.Bucket
+		if err := os.MkdirAll(downloadDir, 0755); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create download directory: " + err.Error()})
+			return
+		}
+
+		// 构建文件路径
+		filePath := downloadDir + "/" + input.Key
+		// 确保目录存在
+		fileDir := filepath.Dir(filePath)
+		if err := os.MkdirAll(fileDir, 0755); err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create file directory: " + err.Error()})
+			return
+		}
+
+		// 下载文件
+		resp, err := http.Get(downloadURL)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to download file: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// 检查响应状态
+		if resp.StatusCode != http.StatusOK {
+			c.JSON(500, gin.H{"error": "Failed to download file: HTTP " + resp.Status})
+			return
+		}
+
+		// 创建文件
+		out, err := os.Create(filePath)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create file: " + err.Error()})
+			return
+		}
+		defer out.Close()
+
+		// 写入文件
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to write file: " + err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"success":  true,
+			"message":  "File downloaded successfully",
+			"bucket":   input.Bucket,
+			"key":      input.Key,
+			"path":     filePath,
+			"basePath": cfg.DownloadPath,
+		})
 	}
 }
