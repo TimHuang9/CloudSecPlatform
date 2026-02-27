@@ -236,10 +236,10 @@ const ResourceOverview = () => {
       return
     }
 
-    // 过滤掉那些 key 等于 bucket 的情况，避免下载存储桶本身
+    // 过滤掉那些 key 等于 bucket 或为空的情况，避免下载存储桶本身
     const filteredFileKeys = selectedFileKeys.filter(key => {
       const fileKey = key.replace(`${bucket}/`, '')
-      return fileKey !== bucket
+      return fileKey !== bucket && fileKey !== ''
     })
 
     if (filteredFileKeys.length === 0) {
@@ -286,8 +286,8 @@ const ResourceOverview = () => {
       return
     }
 
-    // 过滤掉那些 key 等于 bucket 的情况，避免下载存储桶本身
-    const filteredObjects = objects.filter(file => file.key !== bucket)
+    // 过滤掉那些 key 等于 bucket 或为空的情况，避免下载存储桶本身
+    const filteredObjects = objects.filter(file => file.key !== bucket && file.key !== '')
 
     if (filteredObjects.length === 0) {
       message.warning('存储桶中没有可下载的文件')
@@ -734,18 +734,7 @@ const ResourceOverview = () => {
                       text={task.status === 'success' ? '成功' : task.status === 'running' ? '下载中' : '失败'}
                       style={{ marginRight: 8 }}
                     />
-                    {task.status === 'success' && (
-                      <Button 
-                        type="link" 
-                        icon={<FolderOpenOutlined />}
-                        onClick={() => {
-                          // 显示下载目录路径，让用户手动打开
-                          message.info(`下载目录: ${task.downloadPath}`);
-                        }}
-                      >
-                        查看下载路径
-                      </Button>
-                    )}
+
                   </div>
                 </div>
                 {task.downloadPath && (

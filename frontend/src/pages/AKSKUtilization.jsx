@@ -1210,18 +1210,7 @@ const AKSKUtilization = () => {
                       text={task.status === 'success' ? '成功' : task.status === 'running' ? '下载中' : '失败'}
                       style={{ marginRight: 8 }}
                     />
-                    {task.status === 'success' && (
-                      <Button 
-                        type="link" 
-                        icon={<FolderOpenOutlined />}
-                        onClick={() => {
-                          // 显示下载目录路径，让用户手动打开
-                          message.info(`下载目录: /Users/admin/Documents/Downloads/CloudSecPlatform/${task.bucket}`);
-                        }}
-                      >
-                        打开文件夹
-                      </Button>
-                    )}
+
                   </div>
                 </div>
                 {task.progress !== undefined && (
