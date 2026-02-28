@@ -8,7 +8,8 @@ import {
   LogoutOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
-  SettingOutlined
+  SettingOutlined,
+  AlertOutlined
 } from '@ant-design/icons'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -18,6 +19,7 @@ import AKSKUtilization from './pages/AKSKUtilization'
 import TaskManagement from './pages/TaskManagement'
 import ResourceOverview from './pages/ResourceOverview'
 import Settings from './pages/Settings'
+import APTAttackScenarios from './pages/APTAttackScenarios'
 
 import { useSelector, useDispatch } from 'react-redux'
 import { logout } from './store/authSlice'
@@ -80,6 +82,12 @@ function App() {
             icon: <DatabaseOutlined style={{ fontSize: '18px' }} />,
             label: '资源总览',
             path: '/resources'
+          },
+          {
+            key: 'apt',
+            icon: <AlertOutlined style={{ fontSize: '18px' }} />,
+            label: 'APT攻击剧本',
+            path: '/apt'
           },
           {
             key: 'settings',
@@ -226,6 +234,7 @@ function App() {
                   <Route path="/aksk" element={<PrivateRoute><AKSKUtilization /></PrivateRoute>} />
                   <Route path="/tasks" element={<PrivateRoute><TaskManagement /></PrivateRoute>} />
                   <Route path="/resources" element={<PrivateRoute><ResourceOverview /></PrivateRoute>} />
+                  <Route path="/apt" element={<PrivateRoute><APTAttackScenarios /></PrivateRoute>} />
                   <Route path="/settings" element={<PrivateRoute><Settings /></PrivateRoute>} />
                   <Route path="/*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>
