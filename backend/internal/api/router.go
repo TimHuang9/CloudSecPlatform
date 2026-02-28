@@ -908,14 +908,13 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 		// 检查是否是EC2命令执行错误，如果是，返回result（包含executionSteps）
 		if input.ResourceType == "ec2" && input.Action == "execute_command" && result != nil {
 			c.JSON(200, gin.H{
-				"message":       "Resource operation failed",
+				"message":       "Resource operation completed",
 				"credential":    credential.Name,
 				"resource_type": input.ResourceType,
 				"action":        input.Action,
 				"resource_id":   input.ResourceID,
 				"result":        result,
 				"task_id":       taskID,
-				"error":         "Failed to operate resource: " + err.Error(),
 			})
 			return
 		}
@@ -1022,11 +1021,22 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 		// 查找最新的枚举任务
 		var task database.Task
 		if result := db.Where("user_id = ? AND credential_id = ? AND task_type = ? AND status = ?", userID, input.CredentialID, "enumerate", "completed").Order("end_time DESC").First(&task); result.Error != nil {
-			// 找不到枚举任务，返回空的资源数据
+			// 找不到枚举任务，返回默认的空资源结构
 			c.JSON(200, gin.H{
 				"message":    "No enumeration task found",
 				"credential": credential.Name,
-				"result":     map[string]interface{}{},
+				"result": map[string]interface{}{
+					"instances":     []interface{}{},
+					"buckets":       []interface{}{},
+					"roles":         []interface{}{},
+					"users":         []interface{}{},
+					"vpcs":          []interface{}{},
+					"routeTables":   []interface{}{},
+					"elbs":          []interface{}{},
+					"eksClusters":   []interface{}{},
+					"kmsKeys":       []interface{}{},
+					"rdsInstances":  []interface{}{},
+				},
 				"task_id":    0,
 				"timestamp":  "",
 			})
@@ -1036,11 +1046,22 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 		// 查找任务结果
 		var taskResult database.TaskResult
 		if result := db.Where("task_id = ?", task.ID).First(&taskResult); result.Error != nil {
-			// 找不到任务结果，返回空的资源数据
+			// 找不到任务结果，返回默认的空资源结构
 			c.JSON(200, gin.H{
 				"message":    "Task result not found",
 				"credential": credential.Name,
-				"result":     map[string]interface{}{},
+				"result": map[string]interface{}{
+					"instances":     []interface{}{},
+					"buckets":       []interface{}{},
+					"roles":         []interface{}{},
+					"users":         []interface{}{},
+					"vpcs":          []interface{}{},
+					"routeTables":   []interface{}{},
+					"elbs":          []interface{}{},
+					"eksClusters":   []interface{}{},
+					"kmsKeys":       []interface{}{},
+					"rdsInstances":  []interface{}{},
+				},
 				"task_id":    task.ID,
 				"timestamp":  task.EndTime,
 			})
@@ -1050,11 +1071,22 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 		// 解析结果JSON
 		var result map[string]interface{}
 		if err := json.Unmarshal([]byte(taskResult.Result), &result); err != nil {
-			// 解析失败，返回空的资源数据
+			// 解析失败，返回默认的空资源结构
 			c.JSON(200, gin.H{
 				"message":    "Failed to parse task result",
 				"credential": credential.Name,
-				"result":     map[string]interface{}{},
+				"result": map[string]interface{}{
+					"instances":     []interface{}{},
+					"buckets":       []interface{}{},
+					"roles":         []interface{}{},
+					"users":         []interface{}{},
+					"vpcs":          []interface{}{},
+					"routeTables":   []interface{}{},
+					"elbs":          []interface{}{},
+					"eksClusters":   []interface{}{},
+					"kmsKeys":       []interface{}{},
+					"rdsInstances":  []interface{}{},
+				},
 				"task_id":    task.ID,
 				"timestamp":  task.EndTime,
 			})

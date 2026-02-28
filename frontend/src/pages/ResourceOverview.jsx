@@ -63,6 +63,7 @@ const ResourceOverview = () => {
   const [selectedInstanceId, setSelectedInstanceId] = useState('')
   const [command, setCommand] = useState('')
   const [commandTasks, setCommandTasks] = useState([])
+  const [commandLoading, setCommandLoading] = useState(false)
 
   // 处理EC2命令执行
   const handleExecuteCommand = (instanceId) => {
@@ -93,7 +94,7 @@ const ResourceOverview = () => {
     // 添加到命令任务列表
     setCommandTasks(prev => [...prev, newTask])
 
-    setLoading(true)
+    setCommandLoading(true)
     setCommandModalVisible(false) // 立即关闭弹窗
     
     try {
@@ -119,11 +120,15 @@ const ResourceOverview = () => {
         } else {
           message.success('命令执行成功')
         }
+        // 处理状态转换，确保状态值统一
+        const rawStatus = response.data.status || response.data.result?.status || 'success';
+        const normalizedStatus = rawStatus.toLowerCase() === 'success' ? 'success' : 'failed';
+        
         // 更新任务状态
         setCommandTasks(prev => prev.map(task => 
           task.id === taskId ? { 
             ...task, 
-            status: response.data.status || response.data.result?.status || 'success', 
+            status: normalizedStatus, 
             commandId: response.data.commandId || response.data.result?.commandId,
             note: response.data.note || response.data.result?.note,
             stdout: response.data.stdout || response.data.result?.stdout,
@@ -134,7 +139,7 @@ const ResourceOverview = () => {
         ))
         
         // 创建全局任务记录
-        const executionStatus = response.data.status || response.data.result?.status || 'success';
+        const executionStatus = normalizedStatus;
         dispatch(createTask({
           credentialId: selectedCredential.id,
           taskType: 'operate',
@@ -189,7 +194,7 @@ const ResourceOverview = () => {
         error: errorMessage
       }))
     } finally {
-      setLoading(false)
+      setCommandLoading(false)
     }
   }
 
@@ -1243,7 +1248,7 @@ const ResourceOverview = () => {
         onCancel={() => setCommandModalVisible(false)}
         okText="执行"
         cancelText="取消"
-        confirmLoading={loading}
+        confirmLoading={commandLoading}
         width={600}
         style={{
           top: 20

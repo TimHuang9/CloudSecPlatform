@@ -1373,17 +1373,30 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			var iamClient *iam.Client
 			var ssmClient *ssm.Client
 
+			// 执行过程信息
+			executionSteps := []string{}
+
 			if instanceRegion != p.region {
 				// 创建新的客户端，使用实例的区域
+				executionSteps = append(executionSteps, fmt.Sprintf("创建实例区域 (%s) 的AWS客户端...", instanceRegion))
 				regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, instanceRegion)
 				if err != nil {
-					return nil, fmt.Errorf("failed to create AWS provider for instance region: %w", err)
+					executionSteps = append(executionSteps, fmt.Sprintf("创建AWS客户端失败: %v", err))
+					return map[string]interface{}{
+						"message":         "Failed to create AWS provider for instance region",
+						"instanceId":      resourceID,
+						"status":          "failed",
+						"error":           err.Error(),
+						"executionSteps":  executionSteps,
+					}, nil
 				}
+				executionSteps = append(executionSteps, "AWS客户端创建成功")
 				ec2Client = regionProvider.ec2Client
 				iamClient = regionProvider.iamClient
 				ssmClient = regionProvider.ssmClient
 			} else {
 				// 使用当前客户端
+				executionSteps = append(executionSteps, "使用当前区域的AWS客户端")
 				ec2Client = p.ec2Client
 				iamClient = p.iamClient
 				ssmClient = p.ssmClient
@@ -1392,9 +1405,6 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			// 检查实例状态
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-
-			// 执行过程信息
-			executionSteps := []string{}
 
 			// 检查实例状态
 			executionSteps = append(executionSteps, "检查实例状态...")
