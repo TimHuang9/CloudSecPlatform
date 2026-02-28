@@ -341,6 +341,331 @@ const APTAttackScenarios = () => {
           }
         }
       ]
+    },
+    {
+      id: 6,
+      name: 'Lazarus Group - 比特币交易所攻击',
+      description: 'Lazarus Group针对比特币交易所和加密货币平台进行攻击，通过鱼叉式钓鱼和供应链攻击获取访问权限。',
+      target: '比特币交易所、加密货币平台',
+      techniques: [
+        '鱼叉式钓鱼获取交易所凭证',
+        '利用交易所API漏洞进行攻击',
+        '部署恶意软件窃取私钥',
+        '通过交易所热钱包进行资金盗取'
+      ],
+      severity: '高',
+      status: '活跃',
+      reference: 'https://www.cisa.gov/uscert/ncas/alerts/aa23-068a',
+      steps: [
+        {
+          name: '目标侦察',
+          description: '收集目标交易所的员工信息和技术基础设施',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功收集目标交易所信息' }
+          }
+        },
+        {
+          name: '鱼叉式钓鱼',
+          description: '发送针对交易所员工的鱼叉式钓鱼邮件',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功通过钓鱼邮件获取员工凭证' }
+          }
+        },
+        {
+          name: '初始访问',
+          description: '使用获取的凭证访问交易所内部系统',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功访问交易所内部系统' }
+          }
+        },
+        {
+          name: '横向移动',
+          description: '在交易所网络中横向移动，寻找关键系统',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2500))
+            return { success: true, message: '成功在交易所网络中横向移动' }
+          }
+        },
+        {
+          name: '私钥窃取',
+          description: '部署恶意软件窃取比特币私钥',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功窃取比特币私钥' }
+          }
+        },
+        {
+          name: '资金盗取',
+          description: '通过获取的私钥从热钱包转移资金',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1800))
+            return { success: true, message: '成功从交易所热钱包转移资金' }
+          }
+        }
+      ]
+    },
+    {
+      id: 7,
+      name: 'APT-38 - 加密货币挖矿攻击',
+      description: 'APT-38组织利用云服务进行大规模比特币挖矿，通过容器漏洞和无服务器架构部署挖矿程序。',
+      target: '云服务提供商、企业云环境',
+      techniques: [
+        '利用容器漏洞获取云资源访问权限',
+        '通过无服务器函数部署挖矿程序',
+        '利用云存储服务隐藏挖矿程序',
+        '使用代理和跳板隐藏攻击来源'
+      ],
+      severity: '高',
+      status: '活跃',
+      reference: 'https://www.trendmicro.com/en_us/research/23/e/apt-38-targets-telecoms-and-financials-with-new-phi-info-stealer.html',
+      steps: [
+        {
+          name: '容器环境扫描',
+          description: '扫描云环境中的容器漏洞',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功扫描到容器漏洞' }
+          }
+        },
+        {
+          name: '漏洞利用',
+          description: '利用容器漏洞获取云资源访问权限',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功利用容器漏洞获取访问权限' }
+          }
+        },
+        {
+          name: '挖矿程序部署',
+          description: '在云资源上部署比特币挖矿程序',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2500))
+            return { success: true, message: '成功部署挖矿程序' }
+          }
+        },
+        {
+          name: '无服务器函数利用',
+          description: '创建无服务器函数作为挖矿控制节点',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功创建无服务器控制节点' }
+          }
+        },
+        {
+          name: '挖矿活动隐藏',
+          description: '利用云存储服务隐藏挖矿程序和活动',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1800))
+            return { success: true, message: '成功隐藏挖矿活动' }
+          }
+        },
+        {
+          name: '持续挖矿',
+          description: '维持长期挖矿活动，定期转移挖到的比特币',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功建立持续挖矿机制' }
+          }
+        }
+      ]
+    },
+    {
+      id: 8,
+      name: 'North Korea APT - DeFi平台攻击',
+      description: '朝鲜APT组织针对去中心化金融（DeFi）平台进行攻击，通过智能合约漏洞和前端攻击窃取用户资金。',
+      target: 'DeFi平台、智能合约、加密货币用户',
+      techniques: [
+        '智能合约审计漏洞利用',
+        '前端注入攻击窃取私钥',
+        '闪电贷攻击操纵价格',
+        '利用跨链桥漏洞进行攻击'
+      ],
+      severity: '高',
+      status: '活跃',
+      reference: 'https://www.reuters.com/technology/cybersecurity/north-korean-hackers-steal-40m-cryptocurrency-2023-11-08/',
+      steps: [
+        {
+          name: '智能合约分析',
+          description: '分析目标DeFi平台的智能合约，寻找漏洞',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功分析智能合约并发现漏洞' }
+          }
+        },
+        {
+          name: '前端攻击',
+          description: '对DeFi平台前端进行注入攻击，窃取用户私钥',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功通过前端攻击窃取用户私钥' }
+          }
+        },
+        {
+          name: '闪电贷攻击',
+          description: '利用闪电贷操纵DeFi平台价格，获取利润',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2500))
+            return { success: true, message: '成功执行闪电贷攻击' }
+          }
+        },
+        {
+          name: '跨链桥攻击',
+          description: '利用跨链桥漏洞进行资金窃取',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功利用跨链桥漏洞窃取资金' }
+          }
+        },
+        {
+          name: '资金转移',
+          description: '将窃取的资金转移到安全地址',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1800))
+            return { success: true, message: '成功转移窃取的资金' }
+          }
+        },
+        {
+          name: '资金洗白',
+          description: '通过混币服务洗白窃取的资金',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功洗白窃取的资金' }
+          }
+        }
+      ]
+    },
+    {
+      id: 9,
+      name: 'Cozy Bear - 云挖矿基础设施攻击',
+      description: 'Cozy Bear（APT29）针对云挖矿基础设施进行攻击，利用管理界面漏洞获取控制权限。',
+      target: '云挖矿平台、加密货币挖矿基础设施',
+      techniques: [
+        '利用云挖矿管理界面漏洞',
+        '部署持久性后门',
+        '窃取挖矿收益',
+        '利用挖矿基础设施进行其他攻击'
+      ],
+      severity: '高',
+      status: '活跃',
+      reference: 'https://www.microsoft.com/en-us/security/blog/2023/05/24/volt-typhoon-targets-us-critical-infrastructure-with-living-off-the-land-techniques/',
+      steps: [
+        {
+          name: '挖矿平台侦察',
+          description: '扫描目标云挖矿平台的管理界面',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功扫描到目标挖矿平台' }
+          }
+        },
+        {
+          name: '漏洞利用',
+          description: '利用管理界面漏洞获取访问权限',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功利用漏洞获取管理权限' }
+          }
+        },
+        {
+          name: '后门部署',
+          description: '在挖矿平台部署持久性后门',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1800))
+            return { success: true, message: '成功部署持久性后门' }
+          }
+        },
+        {
+          name: '挖矿配置修改',
+          description: '修改挖矿配置，将部分收益重定向到攻击者地址',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2500))
+            return { success: true, message: '成功修改挖矿配置' }
+          }
+        },
+        {
+          name: '横向移动',
+          description: '利用挖矿平台访问权限横向移动到其他系统',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功在挖矿基础设施中横向移动' }
+          }
+        },
+        {
+          name: '长期控制',
+          description: '建立长期控制机制，持续窃取挖矿收益',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功建立长期控制机制' }
+          }
+        }
+      ]
+    },
+    {
+      id: 10,
+      name: 'APT-27 - 加密货币交易所供应链攻击',
+      description: 'APT-27组织通过供应链攻击针对加密货币交易所，利用恶意依赖包获取访问权限。',
+      target: '加密货币交易所、区块链公司',
+      techniques: [
+        '恶意依赖包供应链攻击',
+        '利用CI/CD管道漏洞',
+        '部署信息窃取恶意软件',
+        '通过交易所API进行资金转移'
+      ],
+      severity: '高',
+      status: '活跃',
+      reference: 'https://www.crowdstrike.com/blog/apt-27-supply-chain-attack-targets-southeast-asia/',
+      steps: [
+        {
+          name: '供应链分析',
+          description: '分析目标交易所的依赖包和CI/CD管道',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功分析目标交易所的供应链' }
+          }
+        },
+        {
+          name: '恶意依赖包注入',
+          description: '创建并发布包含恶意代码的依赖包',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功创建并发布恶意依赖包' }
+          }
+        },
+        {
+          name: 'CI/CD漏洞利用',
+          description: '利用CI/CD管道漏洞执行恶意代码',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2500))
+            return { success: true, message: '成功利用CI/CD漏洞执行恶意代码' }
+          }
+        },
+        {
+          name: '凭证窃取',
+          description: '窃取交易所API凭证和私钥',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000))
+            return { success: true, message: '成功窃取交易所API凭证和私钥' }
+          }
+        },
+        {
+          name: 'API攻击',
+          description: '使用获取的API凭证进行资金转移',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1800))
+            return { success: true, message: '成功通过API转移资金' }
+          }
+        },
+        {
+          name: '痕迹清除',
+          description: '清除攻击痕迹，避免被检测',
+          execute: async () => {
+            await new Promise(resolve => setTimeout(resolve, 1500))
+            return { success: true, message: '成功清除攻击痕迹' }
+          }
+        }
+      ]
     }
   ]
 
