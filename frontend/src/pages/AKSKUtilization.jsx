@@ -2143,18 +2143,7 @@ const AKSKUtilization = () => {
                         )}
                       </div>
                     </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>潜在提升路径：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {permissions.potentialEscalation && Array.isArray(permissions.potentialEscalation) ? (
-                          permissions.potentialEscalation.map((path, index) => (
-                            <div key={index} style={{ marginBottom: '4px' }}>• {path}</div>
-                          ))
-                        ) : (
-                          <div>暂无潜在提升路径</div>
-                        )}
-                      </div>
-                    </div>
+
                     <div>
                       <Text strong>风险等级：</Text> 
                       <Text style={{ 
