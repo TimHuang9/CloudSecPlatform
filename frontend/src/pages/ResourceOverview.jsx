@@ -1582,7 +1582,7 @@ const ResourceOverview = () => {
           
           <div style={{ display: 'flex', gap: 16 }}>
             {/* 左侧区域栏目 */}
-            <div style={{ width: 240, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}>
+            <div style={{ width: 240, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
                 <SearchOutlined style={{ marginRight: 8, color: '#1890ff' }} />
                 <Text strong style={{ fontSize: 16 }}>区域筛选</Text>
