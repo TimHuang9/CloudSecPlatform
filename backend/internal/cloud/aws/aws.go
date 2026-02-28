@@ -12,14 +12,23 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/apigateway"
+	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	"github.com/aws/aws-sdk-go-v2/service/servicediscovery"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	sts "github.com/aws/aws-sdk-go-v2/service/sts"
 	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
@@ -27,17 +36,26 @@ import (
 
 // AWSProvider AWS云平台实现
 type AWSProvider struct {
-	accessKey   string
-	secretKey   string
-	region      string
-	ec2Client   *ec2.Client
-	iamClient   *iam.Client
-	s3Client    *s3.Client
-	elbv2Client *elasticloadbalancingv2.Client
-	eksClient   *eks.Client
-	kmsClient   *kms.Client
-	rdsClient   *rds.Client
-	ssmClient   *ssm.Client
+	accessKey        string
+	secretKey        string
+	region           string
+	ec2Client        *ec2.Client
+	iamClient        *iam.Client
+	s3Client         *s3.Client
+	elbv2Client      *elasticloadbalancingv2.Client
+	eksClient        *eks.Client
+	kmsClient        *kms.Client
+	rdsClient        *rds.Client
+	ssmClient        *ssm.Client
+	lambdaClient     *lambda.Client
+	apigatewayClient *apigateway.Client
+	cloudtrailClient *cloudtrail.Client
+	cloudwatchlogsClient *cloudwatchlogs.Client
+	dynamodbClient   *dynamodb.Client
+	secretsmanagerClient *secretsmanager.Client
+	snsClient        *sns.Client
+	sqsClient        *sqs.Client
+	servicediscoveryClient *servicediscovery.Client
 }
 
 // NewAWSProvider 创建AWS云平台实例
@@ -89,6 +107,15 @@ func (p *AWSProvider) Init(accessKey, secretKey, region string) error {
 	p.kmsClient = kms.NewFromConfig(cfg)
 	p.rdsClient = rds.NewFromConfig(cfg)
 	p.ssmClient = ssm.NewFromConfig(cfg)
+	p.lambdaClient = lambda.NewFromConfig(cfg)
+	p.apigatewayClient = apigateway.NewFromConfig(cfg)
+	p.cloudtrailClient = cloudtrail.NewFromConfig(cfg)
+	p.cloudwatchlogsClient = cloudwatchlogs.NewFromConfig(cfg)
+	p.dynamodbClient = dynamodb.NewFromConfig(cfg)
+	p.secretsmanagerClient = secretsmanager.NewFromConfig(cfg)
+	p.snsClient = sns.NewFromConfig(cfg)
+	p.sqsClient = sqs.NewFromConfig(cfg)
+	p.servicediscoveryClient = servicediscovery.NewFromConfig(cfg)
 
 	return nil
 }
@@ -446,6 +473,310 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			result["rdsInstances"] = []interface{}{}
 		}
 
+	case "lambda":
+		// 枚举Lambda函数
+		var allFunctions []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Lambda (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Lambda client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的Lambda函数
+			functions, err := regionProvider.enumerateLambdaFunctions()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Lambda (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Lambda functions in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的Lambda函数添加到总列表
+			for _, function := range functions {
+				// 添加区域信息
+				if functionMap, ok := function.(map[string]interface{}); ok {
+					functionMap["region"] = region
+					allFunctions = append(allFunctions, functionMap)
+				}
+			}
+		}
+
+		if len(allFunctions) > 0 {
+			result["lambdaFunctions"] = allFunctions
+		} else {
+			result["lambdaFunctions"] = []interface{}{}
+		}
+
+	case "apigateway":
+		// 枚举API Gateway
+		var allAPIs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("API Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create API Gateway client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的API Gateway
+			apis, err := regionProvider.enumerateAPIGateways()
+			if err != nil {
+				errorMsg := fmt.Sprintf("API Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate API Gateways in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的API Gateway添加到总列表
+			for _, api := range apis {
+				// 添加区域信息
+				if apiMap, ok := api.(map[string]interface{}); ok {
+					apiMap["region"] = region
+					allAPIs = append(allAPIs, apiMap)
+				}
+			}
+		}
+
+		if len(allAPIs) > 0 {
+			result["apiGateways"] = allAPIs
+		} else {
+			result["apiGateways"] = []interface{}{}
+		}
+
+	case "cloudtrail":
+		// 枚举CloudTrail
+		var allTrails []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudTrail (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CloudTrail client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CloudTrail
+			trails, err := regionProvider.enumerateCloudTrails()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudTrail (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CloudTrails in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CloudTrail添加到总列表
+			for _, trail := range trails {
+				// 添加区域信息
+				if trailMap, ok := trail.(map[string]interface{}); ok {
+					trailMap["region"] = region
+					allTrails = append(allTrails, trailMap)
+				}
+			}
+		}
+
+		if len(allTrails) > 0 {
+			result["cloudTrails"] = allTrails
+		} else {
+			result["cloudTrails"] = []interface{}{}
+		}
+
+	case "cloudwatchlogs":
+		// 枚举CloudWatch Logs
+		var allLogGroups []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudWatch Logs (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CloudWatch Logs client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CloudWatch Logs
+			logGroups, err := regionProvider.enumerateCloudWatchLogGroups()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudWatch Logs (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CloudWatch Log Groups in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CloudWatch Logs添加到总列表
+			for _, logGroup := range logGroups {
+				// 添加区域信息
+				if logGroupMap, ok := logGroup.(map[string]interface{}); ok {
+					logGroupMap["region"] = region
+					allLogGroups = append(allLogGroups, logGroupMap)
+				}
+			}
+		}
+
+		if len(allLogGroups) > 0 {
+			result["cloudWatchLogGroups"] = allLogGroups
+		} else {
+			result["cloudWatchLogGroups"] = []interface{}{}
+		}
+
+	case "dynamodb":
+		// 枚举DynamoDB表
+		var allTables []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("DynamoDB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create DynamoDB client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的DynamoDB表
+			tables, err := regionProvider.enumerateDynamoDBTables()
+			if err != nil {
+				errorMsg := fmt.Sprintf("DynamoDB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate DynamoDB tables in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的DynamoDB表添加到总列表
+			for _, table := range tables {
+				// 添加区域信息
+				if tableMap, ok := table.(map[string]interface{}); ok {
+					tableMap["region"] = region
+					allTables = append(allTables, tableMap)
+				}
+			}
+		}
+
+		if len(allTables) > 0 {
+			result["dynamoDBTables"] = allTables
+		} else {
+			result["dynamoDBTables"] = []interface{}{}
+		}
+
+	case "secretsmanager":
+		// 枚举Secrets Manager
+		var allSecrets []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Secrets Manager (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Secrets Manager client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的Secrets Manager
+			secrets, err := regionProvider.enumerateSecretsManager()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Secrets Manager (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Secrets in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的Secrets Manager添加到总列表
+			for _, secret := range secrets {
+				// 添加区域信息
+				if secretMap, ok := secret.(map[string]interface{}); ok {
+					secretMap["region"] = region
+					allSecrets = append(allSecrets, secretMap)
+				}
+			}
+		}
+
+		if len(allSecrets) > 0 {
+			result["secrets"] = allSecrets
+		} else {
+			result["secrets"] = []interface{}{}
+		}
+
+	case "sns":
+		// 枚举SNS主题
+		var allTopics []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("SNS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create SNS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的SNS主题
+			topics, err := regionProvider.enumerateSNSTopics()
+			if err != nil {
+				errorMsg := fmt.Sprintf("SNS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate SNS topics in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的SNS主题添加到总列表
+			for _, topic := range topics {
+				// 添加区域信息
+				if topicMap, ok := topic.(map[string]interface{}); ok {
+					topicMap["region"] = region
+					allTopics = append(allTopics, topicMap)
+				}
+			}
+		}
+
+		if len(allTopics) > 0 {
+			result["snsTopics"] = allTopics
+		} else {
+			result["snsTopics"] = []interface{}{}
+		}
+
+	case "sqs":
+		// 枚举SQS队列
+		var allQueues []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("SQS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create SQS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的SQS队列
+			queues, err := regionProvider.enumerateSQSQueues()
+			if err != nil {
+				errorMsg := fmt.Sprintf("SQS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate SQS queues in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的SQS队列添加到总列表
+			for _, queue := range queues {
+				// 添加区域信息
+				if queueMap, ok := queue.(map[string]interface{}); ok {
+					queueMap["region"] = region
+					allQueues = append(allQueues, queueMap)
+				}
+			}
+		}
+
+		if len(allQueues) > 0 {
+			result["sqsQueues"] = allQueues
+		} else {
+			result["sqsQueues"] = []interface{}{}
+		}
+
 	case "all":
 		// 枚举所有资源
 
@@ -739,6 +1070,302 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			result["rdsInstances"] = allRDSInstances
 		} else {
 			result["rdsInstances"] = []interface{}{}
+		}
+
+		// 尝试枚举Lambda函数
+		var allLambdaFunctions []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Lambda (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Lambda client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的Lambda函数
+			functions, err := regionProvider.enumerateLambdaFunctions()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Lambda (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Lambda functions in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的Lambda函数添加到总列表
+			for _, function := range functions {
+				// 添加区域信息
+				if functionMap, ok := function.(map[string]interface{}); ok {
+					functionMap["region"] = region
+					allLambdaFunctions = append(allLambdaFunctions, functionMap)
+				}
+			}
+		}
+
+		if len(allLambdaFunctions) > 0 {
+			result["lambdaFunctions"] = allLambdaFunctions
+		} else {
+			result["lambdaFunctions"] = []interface{}{}
+		}
+
+		// 尝试枚举API Gateway
+		var allAPIGateways []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("API Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create API Gateway client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的API Gateway
+			apis, err := regionProvider.enumerateAPIGateways()
+			if err != nil {
+				errorMsg := fmt.Sprintf("API Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate API Gateways in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的API Gateway添加到总列表
+			for _, api := range apis {
+				// 添加区域信息
+				if apiMap, ok := api.(map[string]interface{}); ok {
+					apiMap["region"] = region
+					allAPIGateways = append(allAPIGateways, apiMap)
+				}
+			}
+		}
+
+		if len(allAPIGateways) > 0 {
+			result["apiGateways"] = allAPIGateways
+		} else {
+			result["apiGateways"] = []interface{}{}
+		}
+
+		// 尝试枚举CloudTrail
+		var allCloudTrails []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudTrail (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CloudTrail client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CloudTrail
+			trails, err := regionProvider.enumerateCloudTrails()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudTrail (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CloudTrails in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CloudTrail添加到总列表
+			for _, trail := range trails {
+				// 添加区域信息
+				if trailMap, ok := trail.(map[string]interface{}); ok {
+					trailMap["region"] = region
+					allCloudTrails = append(allCloudTrails, trailMap)
+				}
+			}
+		}
+
+		if len(allCloudTrails) > 0 {
+			result["cloudTrails"] = allCloudTrails
+		} else {
+			result["cloudTrails"] = []interface{}{}
+		}
+
+		// 尝试枚举CloudWatch Logs
+		var allCloudWatchLogGroups []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudWatch Logs (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CloudWatch Logs client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CloudWatch Logs
+			logGroups, err := regionProvider.enumerateCloudWatchLogGroups()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CloudWatch Logs (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CloudWatch Log Groups in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CloudWatch Logs添加到总列表
+			for _, logGroup := range logGroups {
+				// 添加区域信息
+				if logGroupMap, ok := logGroup.(map[string]interface{}); ok {
+					logGroupMap["region"] = region
+					allCloudWatchLogGroups = append(allCloudWatchLogGroups, logGroupMap)
+				}
+			}
+		}
+
+		if len(allCloudWatchLogGroups) > 0 {
+			result["cloudWatchLogGroups"] = allCloudWatchLogGroups
+		} else {
+			result["cloudWatchLogGroups"] = []interface{}{}
+		}
+
+		// 尝试枚举DynamoDB表
+		var allDynamoDBTables []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("DynamoDB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create DynamoDB client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的DynamoDB表
+			tables, err := regionProvider.enumerateDynamoDBTables()
+			if err != nil {
+				errorMsg := fmt.Sprintf("DynamoDB (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate DynamoDB tables in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的DynamoDB表添加到总列表
+			for _, table := range tables {
+				// 添加区域信息
+				if tableMap, ok := table.(map[string]interface{}); ok {
+					tableMap["region"] = region
+					allDynamoDBTables = append(allDynamoDBTables, tableMap)
+				}
+			}
+		}
+
+		if len(allDynamoDBTables) > 0 {
+			result["dynamoDBTables"] = allDynamoDBTables
+		} else {
+			result["dynamoDBTables"] = []interface{}{}
+		}
+
+		// 尝试枚举Secrets Manager
+		var allSecrets []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Secrets Manager (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Secrets Manager client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的Secrets Manager
+			secrets, err := regionProvider.enumerateSecretsManager()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Secrets Manager (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Secrets in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的Secrets Manager添加到总列表
+			for _, secret := range secrets {
+				// 添加区域信息
+				if secretMap, ok := secret.(map[string]interface{}); ok {
+					secretMap["region"] = region
+					allSecrets = append(allSecrets, secretMap)
+				}
+			}
+		}
+
+		if len(allSecrets) > 0 {
+			result["secrets"] = allSecrets
+		} else {
+			result["secrets"] = []interface{}{}
+		}
+
+		// 尝试枚举SNS主题
+		var allSNSTopics []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("SNS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create SNS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的SNS主题
+			topics, err := regionProvider.enumerateSNSTopics()
+			if err != nil {
+				errorMsg := fmt.Sprintf("SNS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate SNS topics in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的SNS主题添加到总列表
+			for _, topic := range topics {
+				// 添加区域信息
+				if topicMap, ok := topic.(map[string]interface{}); ok {
+					topicMap["region"] = region
+					allSNSTopics = append(allSNSTopics, topicMap)
+				}
+			}
+		}
+
+		if len(allSNSTopics) > 0 {
+			result["snsTopics"] = allSNSTopics
+		} else {
+			result["snsTopics"] = []interface{}{}
+		}
+
+		// 尝试枚举SQS队列
+		var allSQSQueues []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("SQS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create SQS client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的SQS队列
+			queues, err := regionProvider.enumerateSQSQueues()
+			if err != nil {
+				errorMsg := fmt.Sprintf("SQS (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate SQS queues in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的SQS队列添加到总列表
+			for _, queue := range queues {
+				// 添加区域信息
+				if queueMap, ok := queue.(map[string]interface{}); ok {
+					queueMap["region"] = region
+					allSQSQueues = append(allSQSQueues, queueMap)
+				}
+			}
+		}
+
+		if len(allSQSQueues) > 0 {
+			result["sqsQueues"] = allSQSQueues
+		} else {
+			result["sqsQueues"] = []interface{}{}
 		}
 
 	default:
@@ -1213,6 +1840,239 @@ func (p *AWSProvider) enumerateRDSInstances() ([]interface{}, error) {
 	}
 
 	return instances, nil
+}
+
+// enumerateLambdaFunctions 枚举Lambda函数
+func (p *AWSProvider) enumerateLambdaFunctions() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取Lambda函数列表
+	input := &lambda.ListFunctionsInput{}
+	response, err := p.lambdaClient.ListFunctions(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list Lambda functions: %w", err)
+	}
+
+	var functions []interface{}
+	for _, function := range response.Functions {
+		functions = append(functions, map[string]interface{}{
+			"functionName": *function.FunctionName,
+			"functionArn":  *function.FunctionArn,
+			"runtime":      function.Runtime,
+			"handler":      function.Handler,
+			"role":         function.Role,
+			"timeout":      function.Timeout,
+			"memorySize":   function.MemorySize,
+			"lastModified": function.LastModified,
+		})
+	}
+
+	return functions, nil
+}
+
+// enumerateAPIGateways 枚举API Gateway
+func (p *AWSProvider) enumerateAPIGateways() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取API Gateway列表
+	input := &apigateway.GetRestApisInput{}
+	response, err := p.apigatewayClient.GetRestApis(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get API Gateways: %w", err)
+	}
+
+	var apis []interface{}
+	for _, api := range response.Items {
+		apis = append(apis, map[string]interface{}{
+			"id":          *api.Id,
+			"name":        *api.Name,
+			"description": api.Description,
+			"createdDate": api.CreatedDate,
+			"version":     api.Version,
+			"apiKeySource": api.ApiKeySource,
+			"endpointConfiguration": api.EndpointConfiguration,
+		})
+	}
+
+	return apis, nil
+}
+
+// enumerateCloudTrails 枚举CloudTrail
+func (p *AWSProvider) enumerateCloudTrails() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取CloudTrail列表
+	input := &cloudtrail.DescribeTrailsInput{}
+	response, err := p.cloudtrailClient.DescribeTrails(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe CloudTrails: %w", err)
+	}
+
+	var trails []interface{}
+	for _, trail := range response.TrailList {
+		trails = append(trails, map[string]interface{}{
+			"name":                  *trail.Name,
+			"s3BucketName":          trail.S3BucketName,
+			"snsTopicName":          trail.SnsTopicName,
+			"includeGlobalServiceEvents": *trail.IncludeGlobalServiceEvents,
+			"isMultiRegionTrail":     *trail.IsMultiRegionTrail,
+			"homeRegion":            *trail.HomeRegion,
+			"trailARN":              *trail.TrailARN,
+			"logFileValidationEnabled": *trail.LogFileValidationEnabled,
+		})
+	}
+
+	return trails, nil
+}
+
+// enumerateCloudWatchLogGroups 枚举CloudWatch Logs
+func (p *AWSProvider) enumerateCloudWatchLogGroups() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取CloudWatch Log Groups列表
+	input := &cloudwatchlogs.DescribeLogGroupsInput{}
+	response, err := p.cloudwatchlogsClient.DescribeLogGroups(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe CloudWatch Log Groups: %w", err)
+	}
+
+	var logGroups []interface{}
+	for _, logGroup := range response.LogGroups {
+		logGroups = append(logGroups, map[string]interface{}{
+			"logGroupName":  *logGroup.LogGroupName,
+			"creationTime":  logGroup.CreationTime,
+			"retentionInDays": logGroup.RetentionInDays,
+			"metricFilterCount": logGroup.MetricFilterCount,
+			"arn":           *logGroup.Arn,
+		})
+	}
+
+	return logGroups, nil
+}
+
+// enumerateDynamoDBTables 枚举DynamoDB表
+func (p *AWSProvider) enumerateDynamoDBTables() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取DynamoDB表列表
+	input := &dynamodb.ListTablesInput{}
+	response, err := p.dynamodbClient.ListTables(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list DynamoDB tables: %w", err)
+	}
+
+	var tables []interface{}
+	for _, tableName := range response.TableNames {
+		// 获取表的详细信息
+		describeInput := &dynamodb.DescribeTableInput{
+			TableName: aws.String(tableName),
+		}
+		describeResponse, err := p.dynamodbClient.DescribeTable(ctx, describeInput)
+		if err != nil {
+			// 如果获取详细信息失败，继续处理下一个表
+			continue
+		}
+
+		table := describeResponse.Table
+		tables = append(tables, map[string]interface{}{
+			"tableName":     *table.TableName,
+			"tableArn":      *table.TableArn,
+			"tableStatus":   table.TableStatus,
+			"creationDateTime": table.CreationDateTime,
+			"provisionedThroughput": table.ProvisionedThroughput,
+			"attributeDefinitions":   table.AttributeDefinitions,
+			"keySchema":             table.KeySchema,
+		})
+	}
+
+	return tables, nil
+}
+
+// enumerateSecretsManager 枚举Secrets Manager
+func (p *AWSProvider) enumerateSecretsManager() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取Secrets列表
+	input := &secretsmanager.ListSecretsInput{}
+	response, err := p.secretsmanagerClient.ListSecrets(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list Secrets: %w", err)
+	}
+
+	var secrets []interface{}
+	for _, secret := range response.SecretList {
+		secrets = append(secrets, map[string]interface{}{
+			"arn":           *secret.ARN,
+			"name":          *secret.Name,
+			"description":   secret.Description,
+			"lastAccessedDate": secret.LastAccessedDate,
+			"createdDate":   secret.CreatedDate,
+			"rotationEnabled": secret.RotationEnabled,
+		})
+	}
+
+	return secrets, nil
+}
+
+// enumerateSNSTopics 枚举SNS主题
+func (p *AWSProvider) enumerateSNSTopics() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取SNS主题列表
+	input := &sns.ListTopicsInput{}
+	response, err := p.snsClient.ListTopics(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list SNS topics: %w", err)
+	}
+
+	var topics []interface{}
+	for _, topic := range response.Topics {
+		topics = append(topics, map[string]interface{}{
+			"topicArn": *topic.TopicArn,
+		})
+	}
+
+	return topics, nil
+}
+
+// enumerateSQSQueues 枚举SQS队列
+func (p *AWSProvider) enumerateSQSQueues() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取SQS队列列表
+	input := &sqs.ListQueuesInput{}
+	response, err := p.sqsClient.ListQueues(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list SQS queues: %w", err)
+	}
+
+	var queues []interface{}
+	for _, queueUrl := range response.QueueUrls {
+		// 从URL中提取队列名称
+		queueName := queueUrl[strings.LastIndex(queueUrl, "/")+1:]
+		queues = append(queues, map[string]interface{}{
+			"queueUrl":  queueUrl,
+			"queueName": queueName,
+		})
+	}
+
+	return queues, nil
 }
 
 // EscalatePrivileges 权限提升

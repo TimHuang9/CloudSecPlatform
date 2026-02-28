@@ -1,14 +1,13 @@
 package azure
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
-	"github.com/Azure/azure-sdk-for-go/sdk/compute/armcompute"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/armstorage"
-	"github.com/Azure/azure-sdk-for-go/sdk/authorization/armauthorization"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/compute/armcompute"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/storage/armstorage"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/authorization/armauthorization"
 )
 
 // AzureProvider Azure云平台实现
@@ -41,8 +40,6 @@ func NewAzureProvider(accessKey, secretKey, region string) (*AzureProvider, erro
 
 // Init 初始化Azure客户端
 func (p *AzureProvider) Init(accessKey, secretKey, region string) error {
-	ctx := context.Background()
-
 	// 创建凭证
 	cred, err := azidentity.NewClientSecretCredential(
 		accessKey, // tenant ID

@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
 import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin, Badge } from 'antd'
-import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, FolderOpenOutlined, UserOutlined } from '@ant-design/icons'
+import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, FolderOpenOutlined, UserOutlined, BuildOutlined } from '@ant-design/icons'
 import axios from 'axios'
+import { Graphviz } from 'graphviz-react'
 
 // 配置 axios 基础 URL
 const api = axios.create({
@@ -49,6 +50,8 @@ const AKSKUtilization = () => {
   const [enumerationProgresses, setEnumerationProgresses] = useState({})
   const [enumerationStatus, setEnumerationStatus] = useState('')
   const [userInfo, setUserInfo] = useState({})
+  const [topologyData, setTopologyData] = useState(null)
+  const [topologyLoading, setTopologyLoading] = useState(false)
 
   // 动态资源类型列表
   const getResourceTypes = () => {
@@ -80,7 +83,15 @@ const AKSKUtilization = () => {
         { value: 'elb', label: '负载均衡器' },
         { value: 'eks', label: 'EKS 集群' },
         { value: 'kms', label: 'KMS 密钥' },
-        { value: 'rds', label: 'RDS 数据库' }
+        { value: 'rds', label: 'RDS 数据库' },
+        { value: 'lambda', label: 'Lambda 函数' },
+        { value: 'apigateway', label: 'API Gateway' },
+        { value: 'cloudtrail', label: 'CloudTrail' },
+        { value: 'cloudwatchlogs', label: 'CloudWatch Logs' },
+        { value: 'dynamodb', label: 'DynamoDB 表' },
+        { value: 'secretsmanager', label: 'Secrets Manager' },
+        { value: 'sns', label: 'SNS 主题' },
+        { value: 'sqs', label: 'SQS 队列' }
       ]
     } else if (selectedCredential.cloudProvider === '阿里云') {
       return [
@@ -131,7 +142,15 @@ const AKSKUtilization = () => {
         { value: 'elb', label: '负载均衡器' },
         { value: 'eks', label: 'EKS' },
         { value: 'kms', label: 'KMS' },
-        { value: 'rds', label: 'RDS' }
+        { value: 'rds', label: 'RDS' },
+        { value: 'lambda', label: 'Lambda' },
+        { value: 'apigateway', label: 'API Gateway' },
+        { value: 'cloudtrail', label: 'CloudTrail' },
+        { value: 'cloudwatchlogs', label: 'CloudWatch Logs' },
+        { value: 'dynamodb', label: 'DynamoDB' },
+        { value: 'secretsmanager', label: 'Secrets Manager' },
+        { value: 'sns', label: 'SNS' },
+        { value: 'sqs', label: 'SQS' }
       ]
     } else if (selectedCredential.cloudProvider === '阿里云') {
       return [
@@ -213,7 +232,7 @@ const AKSKUtilization = () => {
     // 定义要枚举的资源类型
     const resourceTypesToEnumerate = []
     if (resourceType === 'all') {
-      resourceTypesToEnumerate.push('ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds')
+      resourceTypesToEnumerate.push('ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds', 'lambda', 'apigateway', 'cloudtrail', 'cloudwatchlogs', 'dynamodb', 'secretsmanager', 'sns', 'sqs')
     } else if (resourceType === 'iam') {
       resourceTypesToEnumerate.push('iamRoles', 'iamUsers')
     } else {
@@ -873,6 +892,483 @@ const AKSKUtilization = () => {
                   })
                 }
                 break
+                
+              case 'lambda':
+                if (result.lambdaFunctions && Array.isArray(result.lambdaFunctions)) {
+                  const regions = [...new Set(result.lambdaFunctions.map(lambda => lambda.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 Lambda 函数 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 Lambda 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 Lambda 函数 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 Lambda 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 Lambda 函数 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.lambdaFunctions.forEach(lambdaFunction => {
+                    resources.push({
+                      id: lambdaFunction.functionName,
+                      name: lambdaFunction.functionName,
+                      type: 'lambda',
+                      status: 'active',
+                      region: lambdaFunction.region || selectedCredential.region,
+                      runtime: lambdaFunction.runtime,
+                      handler: lambdaFunction.handler,
+                      timeout: lambdaFunction.timeout,
+                      memorySize: lambdaFunction.memorySize
+                    })
+                  })
+                  
+                  // 更新 Lambda 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 Lambda 函数 (区域: ${regions.join(', ')}, ${result.lambdaFunctions.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 Lambda 函数，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 Lambda 函数` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'apigateway':
+                if (result.apiGateways && Array.isArray(result.apiGateways)) {
+                  const regions = [...new Set(result.apiGateways.map(api => api.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 API Gateway (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 API Gateway 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 API Gateway (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 API Gateway 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 API Gateway (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.apiGateways.forEach(api => {
+                    resources.push({
+                      id: api.id,
+                      name: api.name,
+                      type: 'apigateway',
+                      status: 'active',
+                      region: api.region || selectedCredential.region,
+                      version: api.version,
+                      apiKeySource: api.apiKeySource
+                    })
+                  })
+                  
+                  // 更新 API Gateway 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 API Gateway (区域: ${regions.join(', ')}, ${result.apiGateways.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 API Gateway，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 API Gateway` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'cloudtrail':
+                if (result.cloudTrails && Array.isArray(result.cloudTrails)) {
+                  const regions = [...new Set(result.cloudTrails.map(trail => trail.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 CloudTrail (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 CloudTrail 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 CloudTrail (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 CloudTrail 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 CloudTrail (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.cloudTrails.forEach(trail => {
+                    resources.push({
+                      id: trail.name,
+                      name: trail.name,
+                      type: 'cloudtrail',
+                      status: 'active',
+                      region: trail.region || selectedCredential.region,
+                      s3BucketName: trail.s3BucketName,
+                      isMultiRegionTrail: trail.isMultiRegionTrail
+                    })
+                  })
+                  
+                  // 更新 CloudTrail 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 CloudTrail (区域: ${regions.join(', ')}, ${result.cloudTrails.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 CloudTrail，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 CloudTrail` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'cloudwatchlogs':
+                if (result.cloudWatchLogGroups && Array.isArray(result.cloudWatchLogGroups)) {
+                  const regions = [...new Set(result.cloudWatchLogGroups.map(logGroup => logGroup.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 CloudWatch Logs (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 CloudWatch Logs 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 CloudWatch Logs (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 CloudWatch Logs 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 CloudWatch Logs (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.cloudWatchLogGroups.forEach(logGroup => {
+                    resources.push({
+                      id: logGroup.logGroupName,
+                      name: logGroup.logGroupName,
+                      type: 'cloudwatchlogs',
+                      status: 'active',
+                      region: logGroup.region || selectedCredential.region,
+                      retentionInDays: logGroup.retentionInDays,
+                      metricFilterCount: logGroup.metricFilterCount
+                    })
+                  })
+                  
+                  // 更新 CloudWatch Logs 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 CloudWatch Logs (区域: ${regions.join(', ')}, ${result.cloudWatchLogGroups.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 CloudWatch Logs，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 CloudWatch Logs` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'dynamodb':
+                if (result.dynamoDBTables && Array.isArray(result.dynamoDBTables)) {
+                  const regions = [...new Set(result.dynamoDBTables.map(table => table.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 DynamoDB 表 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 DynamoDB 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 DynamoDB 表 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 DynamoDB 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 DynamoDB 表 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.dynamoDBTables.forEach(table => {
+                    resources.push({
+                      id: table.tableName,
+                      name: table.tableName,
+                      type: 'dynamodb',
+                      status: table.tableStatus,
+                      region: table.region || selectedCredential.region,
+                      creationDateTime: table.creationDateTime
+                    })
+                  })
+                  
+                  // 更新 DynamoDB 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 DynamoDB 表 (区域: ${regions.join(', ')}, ${result.dynamoDBTables.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 DynamoDB 表，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 DynamoDB 表` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'secretsmanager':
+                if (result.secrets && Array.isArray(result.secrets)) {
+                  const regions = [...new Set(result.secrets.map(secret => secret.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 Secrets Manager (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 Secrets Manager 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 Secrets Manager (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 Secrets Manager 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 Secrets Manager (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.secrets.forEach(secret => {
+                    resources.push({
+                      id: secret.name,
+                      name: secret.name,
+                      type: 'secretsmanager',
+                      status: 'active',
+                      region: secret.region || selectedCredential.region,
+                      description: secret.description,
+                      lastAccessedDate: secret.lastAccessedDate
+                    })
+                  })
+                  
+                  // 更新 Secrets Manager 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 Secrets Manager (区域: ${regions.join(', ')}, ${result.secrets.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 Secrets Manager，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 Secrets Manager` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'sns':
+                if (result.snsTopics && Array.isArray(result.snsTopics)) {
+                  const regions = [...new Set(result.snsTopics.map(topic => topic.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 SNS 主题 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 SNS 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 SNS 主题 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 SNS 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 SNS 主题 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.snsTopics.forEach(topic => {
+                    resources.push({
+                      id: topic.topicArn,
+                      name: topic.topicArn.substring(topic.topicArn.lastIndexOf(':') + 1),
+                      type: 'sns',
+                      status: 'active',
+                      region: topic.region || selectedCredential.region
+                    })
+                  })
+                  
+                  // 更新 SNS 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 SNS 主题 (区域: ${regions.join(', ')}, ${result.snsTopics.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 SNS 主题，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 SNS 主题` }
+                    return updated
+                  })
+                }
+                break
+                
+              case 'sqs':
+                if (result.sqsQueues && Array.isArray(result.sqsQueues)) {
+                  const regions = [...new Set(result.sqsQueues.map(queue => queue.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 SQS 队列 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 SQS 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 SQS 队列 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 SQS 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 SQS 队列 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.sqsQueues.forEach(queue => {
+                    resources.push({
+                      id: queue.queueUrl,
+                      name: queue.queueName,
+                      type: 'sqs',
+                      status: 'active',
+                      region: queue.region || selectedCredential.region
+                    })
+                  })
+                  
+                  // 更新 SQS 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 SQS 队列 (区域: ${regions.join(', ')}, ${result.sqsQueues.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 SQS 队列，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 SQS 队列` }
+                    return updated
+                  })
+                }
+                break
             }
           } catch (resourceError) {
             console.error(`处理 ${resourceType} 资源时出错:`, resourceError)
@@ -1192,6 +1688,255 @@ const AKSKUtilization = () => {
       setUserInfo({})
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 生成拓扑测绘
+  const handleGenerateTopology = async () => {
+    if (!selectedCredential) {
+      message.warning('请选择凭证')
+      return
+    }
+
+    setTopologyLoading(true)
+    try {
+      // 首先枚举资源，确保有数据
+      if (resources.length === 0) {
+        await handleEnumerateResources()
+      }
+
+      // 生成拓扑数据
+      const topology = {
+        nodes: [],
+        edges: []
+      }
+
+      // 为每种资源类型创建节点
+      const resourceNodes = {}
+      
+      // 添加EC2实例节点
+      resources.filter(r => r.type === 'ec2').forEach(instance => {
+        const nodeId = `ec2-${instance.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `EC2: ${instance.name}`,
+          shape: 'box',
+          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
+        })
+      })
+
+      // 添加S3存储桶节点
+      resources.filter(r => r.type === 's3').forEach(bucket => {
+        const nodeId = `s3-${bucket.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `S3: ${bucket.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
+        })
+      })
+
+      // 添加IAM资源节点
+      resources.filter(r => r.type === 'iam').forEach(iam => {
+        const nodeId = `iam-${iam.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `IAM: ${iam.name}`,
+          shape: 'box',
+          style: 'fillcolor:#fff7e6;stroke:#fa8c16;stroke-width:2px'
+        })
+      })
+
+      // 添加VPC节点
+      resources.filter(r => r.type === 'vpc').forEach(vpc => {
+        const nodeId = `vpc-${vpc.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `VPC: ${vpc.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f9f0ff;stroke:#722ed1;stroke-width:2px'
+        })
+      })
+
+      // 添加ELB节点
+      resources.filter(r => r.type === 'elb').forEach(elb => {
+        const nodeId = `elb-${elb.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `ELB: ${elb.name}`,
+          shape: 'box',
+          style: 'fillcolor:#e8f5ff;stroke:#13c2c2;stroke-width:2px'
+        })
+      })
+
+      // 添加EKS集群节点
+      resources.filter(r => r.type === 'eks').forEach(cluster => {
+        const nodeId = `eks-${cluster.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `EKS: ${cluster.name}`,
+          shape: 'box',
+          style: 'fillcolor:#fff1f0;stroke:#eb2f96;stroke-width:2px'
+        })
+      })
+
+      // 添加RDS数据库节点
+      resources.filter(r => r.type === 'rds').forEach(rds => {
+        const nodeId = `rds-${rds.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `RDS: ${rds.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f0f5ff;stroke:#2f54eb;stroke-width:2px'
+        })
+      })
+
+      // 添加KMS密钥节点
+      resources.filter(r => r.type === 'kms').forEach(key => {
+        const nodeId = `kms-${key.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `KMS: ${key.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
+        })
+      })
+
+      // 添加Lambda函数节点
+      resources.filter(r => r.type === 'lambda').forEach(lambda => {
+        const nodeId = `lambda-${lambda.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `Lambda: ${lambda.name}`,
+          shape: 'box',
+          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
+        })
+      })
+
+      // 添加API Gateway节点
+      resources.filter(r => r.type === 'apigateway').forEach(api => {
+        const nodeId = `apigateway-${api.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `API Gateway: ${api.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f9f0ff;stroke:#722ed1;stroke-width:2px'
+        })
+      })
+
+      // 添加CloudTrail节点
+      resources.filter(r => r.type === 'cloudtrail').forEach(trail => {
+        const nodeId = `cloudtrail-${trail.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `CloudTrail: ${trail.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f0f5ff;stroke:#2f54eb;stroke-width:2px'
+        })
+      })
+
+      // 添加CloudWatch Logs节点
+      resources.filter(r => r.type === 'cloudwatchlogs').forEach(logGroup => {
+        const nodeId = `cloudwatchlogs-${logGroup.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `CloudWatch Logs: ${logGroup.name}`,
+          shape: 'box',
+          style: 'fillcolor:#fff7e6;stroke:#fa8c16;stroke-width:2px'
+        })
+      })
+
+      // 添加DynamoDB表节点
+      resources.filter(r => r.type === 'dynamodb').forEach(table => {
+        const nodeId = `dynamodb-${table.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `DynamoDB: ${table.name}`,
+          shape: 'box',
+          style: 'fillcolor:#e8f5ff;stroke:#13c2c2;stroke-width:2px'
+        })
+      })
+
+      // 添加Secrets Manager节点
+      resources.filter(r => r.type === 'secretsmanager').forEach(secret => {
+        const nodeId = `secretsmanager-${secret.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `Secrets Manager: ${secret.name}`,
+          shape: 'box',
+          style: 'fillcolor:#fff1f0;stroke:#eb2f96;stroke-width:2px'
+        })
+      })
+
+      // 添加SNS主题节点
+      resources.filter(r => r.type === 'sns').forEach(topic => {
+        const nodeId = `sns-${topic.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `SNS: ${topic.name}`,
+          shape: 'box',
+          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
+        })
+      })
+
+      // 添加SQS队列节点
+      resources.filter(r => r.type === 'sqs').forEach(queue => {
+        const nodeId = `sqs-${queue.id}`
+        resourceNodes[nodeId] = true
+        topology.nodes.push({
+          id: nodeId,
+          label: `SQS: ${queue.name}`,
+          shape: 'box',
+          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
+        })
+      })
+
+      // 生成Graphviz DOT语言
+      let dot = 'digraph G {\n'
+      dot += '  rankdir=LR;\n'
+      dot += '  node [fontname="Arial", fontsize=12];\n'
+      dot += '  edge [fontname="Arial", fontsize=10, color="#999"];\n\n'
+
+      // 添加节点
+      topology.nodes.forEach(node => {
+        dot += `  "${node.id}" [label="${node.label}", shape=${node.shape}, style="${node.style}"];\n`
+      })
+
+      dot += '\n'
+
+      // 添加边（这里简单地将所有资源连接到中心节点）
+      const centerNode = 'aws_account'
+      dot += `  "${centerNode}" [label="AWS Account: ${selectedCredential.name}", shape=ellipse, style="fillcolor:#f0f0f0;stroke:#333;stroke-width:2px", fontsize=14, fontweight=bold];\n\n`
+
+      topology.nodes.forEach(node => {
+        dot += `  "${centerNode}" -> "${node.id}";\n`
+      })
+
+      dot += '}'
+
+      setTopologyData(dot)
+      message.success('拓扑测绘生成成功')
+    } catch (error) {
+      console.error('生成拓扑测绘失败:', error)
+      message.error('生成拓扑测绘失败: ' + (error.response?.data?.error || '未知错误'))
+      setTopologyData(null)
+    } finally {
+      setTopologyLoading(false)
     }
   }
 
@@ -1843,6 +2588,36 @@ const AKSKUtilization = () => {
                 ) : (
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>
                     <Text type="secondary">请点击"获取用户信息"按钮获取用户信息</Text>
+                  </div>
+                )}
+              </div>
+            </TabPane>
+
+            {/* 拓扑测绘 */}
+            <TabPane tab="拓扑测绘" key="topology">
+              <div style={{ marginBottom: 16 }}>
+                <Button 
+                  type="primary" 
+                  icon={<BuildOutlined />}
+                  onClick={handleGenerateTopology}
+                  loading={topologyLoading}
+                  style={{ marginBottom: 16 }}
+                >
+                  生成拓扑图
+                </Button>
+                
+                {topologyData ? (
+                  <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
+                    <h3>拓扑测绘结果</h3>
+                    <div style={{ marginTop: 16, overflow: 'auto' }}>
+                      <div style={{ minWidth: '800px', minHeight: '500px' }}>
+                        <Graphviz dot={topologyData} />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                    <Text type="secondary">请点击"生成拓扑图"按钮生成资源拓扑</Text>
                   </div>
                 )}
               </div>
