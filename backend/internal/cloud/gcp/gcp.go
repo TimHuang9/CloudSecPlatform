@@ -10,9 +10,9 @@ import (
 
 // GCPProvider GCP云平台实现
 type GCPProvider struct {
-	accessKey string
-	secretKey string
-	region    string
+	accessKey     string
+	secretKey     string
+	region        string
 	storageClient *storage.Client
 	iamClient     *iam.Service
 }
@@ -129,12 +129,12 @@ func (p *GCPProvider) enumerateComputeInstances() ([]interface{}, error) {
 	// 暂时返回模拟数据
 	return []interface{}{
 		map[string]interface{}{
-			"instanceId": "1234567890123456789",
+			"instanceId":   "1234567890123456789",
 			"instanceType": "n1-standard-1",
-			"status": "RUNNING",
-			"publicIp": "35.231.14.102",
-			"privateIp": "10.128.0.100",
-			"tags": []string{"web-server", "production"},
+			"status":       "RUNNING",
+			"publicIp":     "35.231.14.102",
+			"privateIp":    "10.128.0.100",
+			"tags":         []string{"web-server", "production"},
 		},
 	}, nil
 }
@@ -145,9 +145,9 @@ func (p *GCPProvider) enumerateStorageBuckets() ([]interface{}, error) {
 	// 暂时返回模拟数据
 	return []interface{}{
 		map[string]interface{}{
-			"bucketName": "my-bucket",
+			"bucketName":   "my-bucket",
 			"creationDate": "2024-01-01T00:00:00Z",
-			"location": p.region,
+			"location":     p.region,
 		},
 	}, nil
 }
@@ -159,8 +159,8 @@ func (p *GCPProvider) enumerateIAMUsers() ([]interface{}, error) {
 	return []interface{}{
 		map[string]interface{}{
 			"userName": "admin@example.com",
-			"userId": "123456789012345678901",
-			"email": "admin@example.com",
+			"userId":   "123456789012345678901",
+			"email":    "admin@example.com",
 		},
 	}, nil
 }
@@ -171,7 +171,7 @@ func (p *GCPProvider) enumerateIAMRoles() ([]interface{}, error) {
 	// 暂时返回模拟数据
 	return []interface{}{
 		map[string]interface{}{
-			"roleName": "roles/compute.admin",
+			"roleName":    "roles/compute.admin",
 			"description": "Full control of all Compute Engine resources",
 		},
 	}, nil
@@ -180,9 +180,24 @@ func (p *GCPProvider) enumerateIAMRoles() ([]interface{}, error) {
 // EscalatePrivileges 权限提升
 func (p *GCPProvider) EscalatePrivileges() (map[string]interface{}, error) {
 	// 这里应该实现GCP权限提升逻辑
-	// 暂时返回模拟数据
+	// 返回前端期望的数据结构
 	return map[string]interface{}{
-		"message": "Privilege escalation attempted",
+		"user": "GCP IAM User",
+		"role": "None",
+		"permissions": []string{
+			"compute.instances.list",
+			"storage.buckets.list",
+			"iam.users.list",
+			"iam.roles.list",
+			"storage.objects.list",
+		},
+		"potentialEscalation": []string{
+			"Create IAM user with admin privileges",
+			"Modify existing IAM policies",
+			"Access Storage buckets with sensitive data",
+		},
+		"riskLevel": "Medium",
+		"message":   "Privilege escalation attempted",
 		"actions": []string{
 			"Checked IAM policies",
 			"Checked Compute instance service accounts",
@@ -196,11 +211,11 @@ func (p *GCPProvider) OperateResource(resourceType, action, resourceID string, p
 	// 这里应该实现GCP资源操作逻辑
 	// 暂时返回模拟数据
 	return map[string]interface{}{
-		"message": "Resource operation attempted",
+		"message":      "Resource operation attempted",
 		"resourceType": resourceType,
-		"action": action,
-		"resourceID": resourceID,
-		"params": params,
+		"action":       action,
+		"resourceID":   resourceID,
+		"params":       params,
 	}, nil
 }
 

@@ -20,12 +20,6 @@ const Dashboard = () => {
       color: '#52c41a'
     },
     {
-      title: '发现漏洞',
-      value: 0,
-      icon: <CloseCircleOutlined style={{ color: '#ff4d4f' }} />,
-      color: '#ff4d4f'
-    },
-    {
       title: '成功率',
       value: '0%',
       icon: <CheckCircleOutlined style={{ color: '#faad14' }} />,
@@ -117,8 +111,7 @@ const Dashboard = () => {
           value: total
         },
         prev[1],
-        prev[2],
-        prev[3]
+        prev[2]
       ])
     } catch (error) {
       console.error('Error fetching cloud distribution:', error)

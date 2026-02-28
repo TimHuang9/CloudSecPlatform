@@ -72,6 +72,7 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		authGroup.POST("/cloud/escalate", escalatePrivilegesHandler(db))
 		authGroup.POST("/cloud/operate", operateResourceHandler(db))
 		authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
+		authGroup.POST("/cloud/userinfo", getUserInfoHandler(db))
 		authGroup.POST("/cloud/resources", getResourcesFromDatabaseHandler(db))
 		authGroup.POST("/cloud/download", downloadFileHandler(db))
 
@@ -1037,6 +1038,53 @@ func getRecentFindingsHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(200, recentFindings)
+	}
+}
+
+// 获取用户信息
+func getUserInfoHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		var input struct {
+			CredentialID uint `json:"credential_id" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 验证凭证是否属于该用户
+		var credential database.CloudCredential
+		if result := db.Where("id = ? AND user_id = ?", input.CredentialID, userID).First(&credential); result.Error != nil {
+			c.JSON(404, gin.H{"error": "Credential not found"})
+			return
+		}
+
+		// 创建云平台实例
+		provider, err := cloud.NewCloudProvider(credential.CloudProvider, credential.AccessKey, credential.SecretKey, credential.Region)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create cloud provider: " + err.Error()})
+			return
+		}
+
+		// 获取用户信息
+		result, err := provider.GetPermissions()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to get user info: " + err.Error()})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message":    "User info retrieved",
+			"credential": credential.Name,
+			"result":     result,
+		})
 	}
 }
 

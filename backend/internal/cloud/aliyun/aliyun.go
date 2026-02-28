@@ -126,11 +126,11 @@ func (p *AliyunProvider) enumerateECSInstances() ([]interface{}, error) {
 	// 暂时返回模拟数据
 	return []interface{}{
 		map[string]interface{}{
-			"instanceId": "i-1234567890abcdef0",
+			"instanceId":   "i-1234567890abcdef0",
 			"instanceType": "ecs.t5-lc2m1.nano",
-			"status": "Running",
-			"publicIp": "47.96.123.45",
-			"privateIp": "172.16.0.100",
+			"status":       "Running",
+			"publicIp":     "47.96.123.45",
+			"privateIp":    "172.16.0.100",
 			"tags": map[string]string{
 				"Name": "Web Server",
 			},
@@ -144,9 +144,9 @@ func (p *AliyunProvider) enumerateOSSBuckets() ([]interface{}, error) {
 	// 暂时返回模拟数据
 	return []interface{}{
 		map[string]interface{}{
-			"bucketName": "my-bucket",
+			"bucketName":   "my-bucket",
 			"creationDate": "2024-01-01T00:00:00Z",
-			"region": p.region,
+			"region":       p.region,
 		},
 	}, nil
 }
@@ -158,8 +158,8 @@ func (p *AliyunProvider) enumerateRAMUsers() ([]interface{}, error) {
 	return []interface{}{
 		map[string]interface{}{
 			"userName": "admin",
-			"userId": "1234567890",
-			"arn": "acs:ram::1234567890:user/admin",
+			"userId":   "1234567890",
+			"arn":      "acs:ram::1234567890:user/admin",
 		},
 	}, nil
 }
@@ -171,8 +171,8 @@ func (p *AliyunProvider) enumerateRAMRoles() ([]interface{}, error) {
 	return []interface{}{
 		map[string]interface{}{
 			"roleName": "ECSRole",
-			"roleId": "1234567890",
-			"arn": "acs:ram::1234567890:role/ECSRole",
+			"roleId":   "1234567890",
+			"arn":      "acs:ram::1234567890:role/ECSRole",
 		},
 	}, nil
 }
@@ -180,9 +180,25 @@ func (p *AliyunProvider) enumerateRAMRoles() ([]interface{}, error) {
 // EscalatePrivileges 权限提升
 func (p *AliyunProvider) EscalatePrivileges() (map[string]interface{}, error) {
 	// 这里应该实现阿里云权限提升逻辑
-	// 暂时返回模拟数据
+	// 返回前端期望的数据结构
 	return map[string]interface{}{
-		"message": "Privilege escalation attempted",
+		"user": "Aliyun RAM User",
+		"role": "None",
+		"permissions": []string{
+			"ecs:DescribeInstances",
+			"oss:ListBuckets",
+			"ram:ListUsers",
+			"ram:ListRoles",
+			"oss:GetBucketLocation",
+			"oss:ListObjects",
+		},
+		"potentialEscalation": []string{
+			"Create RAM user with admin privileges",
+			"Modify existing RAM policies",
+			"Access OSS buckets with sensitive data",
+		},
+		"riskLevel": "Medium",
+		"message":   "Privilege escalation attempted",
 		"actions": []string{
 			"Checked RAM policies",
 			"Checked ECS instance roles",
@@ -196,11 +212,11 @@ func (p *AliyunProvider) OperateResource(resourceType, action, resourceID string
 	// 这里应该实现阿里云资源操作逻辑
 	// 暂时返回模拟数据
 	return map[string]interface{}{
-		"message": "Resource operation attempted",
+		"message":      "Resource operation attempted",
 		"resourceType": resourceType,
-		"action": action,
-		"resourceID": resourceID,
-		"params": params,
+		"action":       action,
+		"resourceID":   resourceID,
+		"params":       params,
 	}, nil
 }
 

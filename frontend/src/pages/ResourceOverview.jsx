@@ -57,6 +57,54 @@ const ResourceOverview = () => {
     }
   }
 
+  // 状态管理
+  const [commandModalVisible, setCommandModalVisible] = useState(false)
+  const [selectedInstanceId, setSelectedInstanceId] = useState('')
+  const [command, setCommand] = useState('')
+
+  // 处理EC2命令执行
+  const handleExecuteCommand = (instanceId) => {
+    setSelectedInstanceId(instanceId)
+    setCommand('')
+    setCommandModalVisible(true)
+  }
+
+  // 执行命令
+  const executeCommand = async () => {
+    if (!selectedInstanceId || !command) {
+      message.warning('请输入命令')
+      return
+    }
+
+    setLoading(true)
+    try {
+      // 调用后端API执行命令
+      const response = await api.post('/cloud/operate', {
+        credential_id: selectedCredential.id,
+        resource_type: 'ec2',
+        action: 'execute_command',
+        resource_id: selectedInstanceId,
+        params: {
+          command: command
+        }
+      })
+
+      if (response.data && response.data.success) {
+        message.success('命令执行成功')
+        // 刷新资源列表，获取最新状态
+        fetchResources(selectedCredential)
+      } else {
+        message.error('命令执行失败: ' + (response.data?.message || '未知错误'))
+      }
+    } catch (error) {
+      console.error('命令执行失败:', error)
+      message.error('命令执行失败: ' + (error.response?.data?.error || '未知错误'))
+    } finally {
+      setLoading(false)
+      setCommandModalVisible(false)
+    }
+  }
+
   // 获取资源数据
   const fetchResources = async (credential) => {
     setLoading(true)
@@ -551,11 +599,23 @@ const ResourceOverview = () => {
     {
       title: '操作',
       key: 'action',
-      render: (_, record) => (
-        <div>
-          {/* 操作按钮已移除，使用展开/折叠功能查看文件 */}
-        </div>
-      )
+      width: 100,
+      render: (_, record) => {
+        // 检查资源类型，确保EC2实例显示执行命令选项
+        if (record.type === 'ec2') {
+          return (
+            <div>
+              <a href="#" onClick={(e) => {
+                e.preventDefault();
+                handleExecuteCommand(record.id);
+              }} style={{ color: '#1890ff', cursor: 'pointer' }}>
+                运行命令
+              </a>
+            </div>
+          )
+        }
+        return null
+      }
     }
   ]
 
@@ -1005,6 +1065,41 @@ const ResourceOverview = () => {
           </div>
         </Card>
       )}
+
+      {/* 命令执行模态框 */}
+      <Modal
+        title="执行命令"
+        open={commandModalVisible}
+        onOk={executeCommand}
+        onCancel={() => setCommandModalVisible(false)}
+        okText="执行"
+        cancelText="取消"
+        confirmLoading={loading}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text strong>EC2 实例 ID: {selectedInstanceId}</Text>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <Text>请输入要执行的命令:</Text>
+          <textarea
+            style={{
+              width: '100%',
+              height: 120,
+              marginTop: 8,
+              padding: 12,
+              border: '1px solid #d9d9d9',
+              borderRadius: 4,
+              resize: 'vertical'
+            }}
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            placeholder="例如: ls -la"
+          />
+        </div>
+        <div style={{ color: '#666', fontSize: 12 }}>
+          <Text>注意: 命令执行结果将显示在任务中心</Text>
+        </div>
+      </Modal>
     </div>
   )
 }
