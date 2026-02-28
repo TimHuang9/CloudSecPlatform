@@ -2,7 +2,6 @@ package aws
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -36,25 +35,25 @@ import (
 
 // AWSProvider AWS云平台实现
 type AWSProvider struct {
-	accessKey        string
-	secretKey        string
-	region           string
-	ec2Client        *ec2.Client
-	iamClient        *iam.Client
-	s3Client         *s3.Client
-	elbv2Client      *elasticloadbalancingv2.Client
-	eksClient        *eks.Client
-	kmsClient        *kms.Client
-	rdsClient        *rds.Client
-	ssmClient        *ssm.Client
-	lambdaClient     *lambda.Client
-	apigatewayClient *apigateway.Client
-	cloudtrailClient *cloudtrail.Client
-	cloudwatchlogsClient *cloudwatchlogs.Client
-	dynamodbClient   *dynamodb.Client
-	secretsmanagerClient *secretsmanager.Client
-	snsClient        *sns.Client
-	sqsClient        *sqs.Client
+	accessKey              string
+	secretKey              string
+	region                 string
+	ec2Client              *ec2.Client
+	iamClient              *iam.Client
+	s3Client               *s3.Client
+	elbv2Client            *elasticloadbalancingv2.Client
+	eksClient              *eks.Client
+	kmsClient              *kms.Client
+	rdsClient              *rds.Client
+	ssmClient              *ssm.Client
+	lambdaClient           *lambda.Client
+	apigatewayClient       *apigateway.Client
+	cloudtrailClient       *cloudtrail.Client
+	cloudwatchlogsClient   *cloudwatchlogs.Client
+	dynamodbClient         *dynamodb.Client
+	secretsmanagerClient   *secretsmanager.Client
+	snsClient              *sns.Client
+	sqsClient              *sqs.Client
 	servicediscoveryClient *servicediscovery.Client
 }
 
@@ -164,6 +163,44 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 	} else {
 		// 否则遍历所有区域
 		regions = awsRegions
+	}
+
+	// 检查是否是多个资源类型（逗号分隔）
+	if strings.Contains(resourceType, ",") {
+		// 分割资源类型
+		resourceTypes := strings.Split(resourceType, ",")
+
+		// 处理每个资源类型
+		for _, rt := range resourceTypes {
+			rt = strings.TrimSpace(rt)
+			if rt == "" {
+				continue
+			}
+
+			// 递归调用自身处理单个资源类型
+			singleResult, err := p.EnumerateResources(rt)
+			if err != nil {
+				errorMsg := fmt.Sprintf("%s: %v", rt, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate %s: %v\n", rt, err)
+				continue
+			}
+
+			// 合并结果
+			for k, v := range singleResult {
+				// 跳过错误字段，只合并资源数据
+				if k != "errors" {
+					result[k] = v
+				}
+			}
+		}
+
+		// 如果有错误，将错误信息添加到结果中
+		if len(errors) > 0 {
+			result["errors"] = errors
+		}
+
+		return result, nil
 	}
 
 	switch resourceType {
@@ -1563,17 +1600,6 @@ func (p *AWSProvider) enumerateS3Buckets() ([]interface{}, error) {
 	return buckets, nil
 }
 
-// isNetworkError 检查是否是网络错误
-func isNetworkError(err error) bool {
-	// 检查错误信息是否包含网络相关的关键词
-	errorStr := err.Error()
-	return strings.Contains(errorStr, "dial tcp") ||
-		strings.Contains(errorStr, "no such host") ||
-		strings.Contains(errorStr, "connection refused") ||
-		strings.Contains(errorStr, "network is unreachable") ||
-		strings.Contains(errorStr, "timeout")
-}
-
 // enumerateIAMUsers 枚举IAM用户
 func (p *AWSProvider) enumerateIAMUsers() ([]interface{}, error) {
 	// 创建带有超时的上下文
@@ -1888,12 +1914,12 @@ func (p *AWSProvider) enumerateAPIGateways() ([]interface{}, error) {
 	var apis []interface{}
 	for _, api := range response.Items {
 		apis = append(apis, map[string]interface{}{
-			"id":          *api.Id,
-			"name":        *api.Name,
-			"description": api.Description,
-			"createdDate": api.CreatedDate,
-			"version":     api.Version,
-			"apiKeySource": api.ApiKeySource,
+			"id":                    *api.Id,
+			"name":                  *api.Name,
+			"description":           api.Description,
+			"createdDate":           api.CreatedDate,
+			"version":               api.Version,
+			"apiKeySource":          api.ApiKeySource,
 			"endpointConfiguration": api.EndpointConfiguration,
 		})
 	}
@@ -1917,14 +1943,14 @@ func (p *AWSProvider) enumerateCloudTrails() ([]interface{}, error) {
 	var trails []interface{}
 	for _, trail := range response.TrailList {
 		trails = append(trails, map[string]interface{}{
-			"name":                  *trail.Name,
-			"s3BucketName":          trail.S3BucketName,
-			"snsTopicName":          trail.SnsTopicName,
+			"name":                       *trail.Name,
+			"s3BucketName":               trail.S3BucketName,
+			"snsTopicName":               trail.SnsTopicName,
 			"includeGlobalServiceEvents": *trail.IncludeGlobalServiceEvents,
-			"isMultiRegionTrail":     *trail.IsMultiRegionTrail,
-			"homeRegion":            *trail.HomeRegion,
-			"trailARN":              *trail.TrailARN,
-			"logFileValidationEnabled": *trail.LogFileValidationEnabled,
+			"isMultiRegionTrail":         *trail.IsMultiRegionTrail,
+			"homeRegion":                 *trail.HomeRegion,
+			"trailARN":                   *trail.TrailARN,
+			"logFileValidationEnabled":   *trail.LogFileValidationEnabled,
 		})
 	}
 
@@ -1947,11 +1973,11 @@ func (p *AWSProvider) enumerateCloudWatchLogGroups() ([]interface{}, error) {
 	var logGroups []interface{}
 	for _, logGroup := range response.LogGroups {
 		logGroups = append(logGroups, map[string]interface{}{
-			"logGroupName":  *logGroup.LogGroupName,
-			"creationTime":  logGroup.CreationTime,
-			"retentionInDays": logGroup.RetentionInDays,
+			"logGroupName":      *logGroup.LogGroupName,
+			"creationTime":      logGroup.CreationTime,
+			"retentionInDays":   logGroup.RetentionInDays,
 			"metricFilterCount": logGroup.MetricFilterCount,
-			"arn":           *logGroup.Arn,
+			"arn":               *logGroup.Arn,
 		})
 	}
 
@@ -1985,12 +2011,12 @@ func (p *AWSProvider) enumerateDynamoDBTables() ([]interface{}, error) {
 
 		table := describeResponse.Table
 		tables = append(tables, map[string]interface{}{
-			"tableName":     *table.TableName,
-			"tableArn":      *table.TableArn,
-			"tableStatus":   table.TableStatus,
-			"creationDateTime": table.CreationDateTime,
+			"tableName":             *table.TableName,
+			"tableArn":              *table.TableArn,
+			"tableStatus":           table.TableStatus,
+			"creationDateTime":      table.CreationDateTime,
 			"provisionedThroughput": table.ProvisionedThroughput,
-			"attributeDefinitions":   table.AttributeDefinitions,
+			"attributeDefinitions":  table.AttributeDefinitions,
 			"keySchema":             table.KeySchema,
 		})
 	}
@@ -2014,12 +2040,12 @@ func (p *AWSProvider) enumerateSecretsManager() ([]interface{}, error) {
 	var secrets []interface{}
 	for _, secret := range response.SecretList {
 		secrets = append(secrets, map[string]interface{}{
-			"arn":           *secret.ARN,
-			"name":          *secret.Name,
-			"description":   secret.Description,
+			"arn":              *secret.ARN,
+			"name":             *secret.Name,
+			"description":      secret.Description,
 			"lastAccessedDate": secret.LastAccessedDate,
-			"createdDate":   secret.CreatedDate,
-			"rotationEnabled": secret.RotationEnabled,
+			"createdDate":      secret.CreatedDate,
+			"rotationEnabled":  secret.RotationEnabled,
 		})
 	}
 
@@ -2243,11 +2269,11 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				if err != nil {
 					executionSteps = append(executionSteps, fmt.Sprintf("创建AWS客户端失败: %v", err))
 					return map[string]interface{}{
-						"message":         "Failed to create AWS provider for instance region",
-						"instanceId":      resourceID,
-						"status":          "failed",
-						"error":           err.Error(),
-						"executionSteps":  executionSteps,
+						"message":        "Failed to create AWS provider for instance region",
+						"instanceId":     resourceID,
+						"status":         "failed",
+						"error":          err.Error(),
+						"executionSteps": executionSteps,
 					}, nil
 				}
 				executionSteps = append(executionSteps, "AWS客户端创建成功")
@@ -2275,22 +2301,22 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			if err != nil {
 				executionSteps = append(executionSteps, fmt.Sprintf("检查实例状态失败: %v", err))
 				return map[string]interface{}{
-					"message":         "Failed to check instance status",
-					"instanceId":      resourceID,
-					"status":          "failed",
-					"error":           err.Error(),
-					"executionSteps":  executionSteps,
+					"message":        "Failed to check instance status",
+					"instanceId":     resourceID,
+					"status":         "failed",
+					"error":          err.Error(),
+					"executionSteps": executionSteps,
 				}, nil
 			}
 
 			if len(ec2Resp.Reservations) == 0 || len(ec2Resp.Reservations[0].Instances) == 0 {
 				executionSteps = append(executionSteps, "实例不存在")
 				return map[string]interface{}{
-					"message":         "Instance not found",
-					"instanceId":      resourceID,
-					"status":          "failed",
-					"error":           "Instance not found",
-					"executionSteps":  executionSteps,
+					"message":        "Instance not found",
+					"instanceId":     resourceID,
+					"status":         "failed",
+					"error":          "Instance not found",
+					"executionSteps": executionSteps,
 				}, nil
 			}
 
@@ -2298,11 +2324,11 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			if instance.State == nil || string(instance.State.Name) != "running" {
 				executionSteps = append(executionSteps, fmt.Sprintf("实例状态不是running，当前状态: %s", string(instance.State.Name)))
 				return map[string]interface{}{
-					"message":         "Instance is not in running state",
-					"instanceId":      resourceID,
-					"status":          "failed",
-					"error":           fmt.Sprintf("Instance is not in running state, current state: %s", string(instance.State.Name)),
-					"executionSteps":  executionSteps,
+					"message":        "Instance is not in running state",
+					"instanceId":     resourceID,
+					"status":         "failed",
+					"error":          fmt.Sprintf("Instance is not in running state, current state: %s", string(instance.State.Name)),
+					"executionSteps": executionSteps,
 				}, nil
 			}
 			executionSteps = append(executionSteps, "实例状态检查通过，状态为running")
@@ -2313,11 +2339,11 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			if err != nil {
 				executionSteps = append(executionSteps, fmt.Sprintf("检查实例配置文件失败: %v", err))
 				return map[string]interface{}{
-					"message":         "Failed to check or create instance profile",
-					"instanceId":      resourceID,
-					"status":          "failed",
-					"error":           err.Error(),
-					"executionSteps":  executionSteps,
+					"message":        "Failed to check or create instance profile",
+					"instanceId":     resourceID,
+					"status":         "failed",
+					"error":          err.Error(),
+					"executionSteps": executionSteps,
 				}, nil
 			}
 			executionSteps = append(executionSteps, "实例配置文件检查完成")
@@ -2350,12 +2376,12 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				executionSteps = append(executionSteps, "- 确保安全组允许SSM流量")
 				executionSteps = append(executionSteps, "- 等待10分钟后再尝试，确保实例配置文件生效")
 				return map[string]interface{}{
-					"message":         "Failed to send command",
-					"instanceId":      resourceID,
-					"command":         command,
-					"status":          "failed",
-					"error":           fmt.Sprintf("%v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err),
-					"executionSteps":  executionSteps,
+					"message":        "Failed to send command",
+					"instanceId":     resourceID,
+					"command":        command,
+					"status":         "failed",
+					"error":          fmt.Sprintf("%v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err),
+					"executionSteps": executionSteps,
 				}, nil
 			}
 
@@ -2378,14 +2404,14 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				executionSteps = append(executionSteps, fmt.Sprintf("获取命令执行结果失败: %v", err))
 				// 如果获取结果失败，返回命令ID和状态
 				return map[string]interface{}{
-					"message":         "Command sent but failed to get result",
-					"instanceId":      resourceID,
-					"commandId":       commandID,
-					"command":         command,
-					"status":          "failed",
-					"error":           err.Error(),
-					"note":            "Failed to get command execution result. Use the command ID to check status later.",
-					"executionSteps":  executionSteps,
+					"message":        "Command sent but failed to get result",
+					"instanceId":     resourceID,
+					"commandId":      commandID,
+					"command":        command,
+					"status":         "failed",
+					"error":          err.Error(),
+					"note":           "Failed to get command execution result. Use the command ID to check status later.",
+					"executionSteps": executionSteps,
 				}, nil
 			}
 
@@ -2398,13 +2424,13 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 
 			// 构建结果
 			result := map[string]interface{}{
-				"message":         "Command executed successfully",
-				"instanceId":      resourceID,
-				"commandId":       commandID,
-				"command":         command,
-				"status":          string(invocationResp.Status),
-				"stdout":          *invocationResp.StandardOutputContent,
-				"executionSteps":  executionSteps,
+				"message":        "Command executed successfully",
+				"instanceId":     resourceID,
+				"commandId":      commandID,
+				"command":        command,
+				"status":         string(invocationResp.Status),
+				"stdout":         *invocationResp.StandardOutputContent,
+				"executionSteps": executionSteps,
 			}
 
 			// 添加错误输出（如果有）
@@ -2748,150 +2774,6 @@ func (p *AWSProvider) checkAndCreateInstanceProfileWithClient(ctx context.Contex
 	}
 
 	return nil
-}
-
-// createOrGetFederatedRole 创建或获取联邦登录角色
-func (p *AWSProvider) createOrGetFederatedRole(roleName string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// 尝试获取角色
-	describeInput := &iam.GetRoleInput{
-		RoleName: aws.String(roleName),
-	}
-
-	describeResponse, err := p.iamClient.GetRole(ctx, describeInput)
-	if err == nil {
-		// 角色已存在，返回ARN
-		return *describeResponse.Role.Arn, nil
-	}
-
-	// 角色不存在，创建新角色
-	// 定义信任策略，允许当前账户的IAM用户或角色AssumeRole
-	trustPolicy := `{
-		"Version": "2012-10-17",
-		"Statement": [
-			{
-				"Effect": "Allow",
-				"Principal": {
-					"AWS": "*"
-				},
-				"Action": "sts:AssumeRole",
-				"Condition": {}
-			}
-		]
-	}`
-
-	// 创建角色
-	createInput := &iam.CreateRoleInput{
-		RoleName:                 aws.String(roleName),
-		AssumeRolePolicyDocument: aws.String(trustPolicy),
-		Description:              aws.String("Role for federated access"),
-	}
-
-	createResponse, err := p.iamClient.CreateRole(ctx, createInput)
-	if err != nil {
-		return "", fmt.Errorf("failed to create role: %w", err)
-	}
-
-	// 附加管理员策略
-	attachInput := &iam.AttachRolePolicyInput{
-		RoleName:  aws.String(roleName),
-		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
-	}
-
-	_, err = p.iamClient.AttachRolePolicy(ctx, attachInput)
-	if err != nil {
-		return "", fmt.Errorf("failed to attach policy: %w", err)
-	}
-
-	return *createResponse.Role.Arn, nil
-}
-
-// generateSAMLResponse 生成SAML响应
-func (p *AWSProvider) generateSAMLResponse(roleARN string) (string, error) {
-	// 生成SAML响应XML
-	samlXML := fmt.Sprintf(`<saml2:Assertion xmlns:saml2="urn:oasis:names:tc:SAML:2.0:assertion" ID="_1234567890" IssueInstant="%s" Version="2.0">
-		<saml2:Issuer>https://your-saml-provider.com</saml2:Issuer>
-		<saml2:Subject>
-			<saml2:NameID Format="urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress">user@example.com</saml2:NameID>
-			<saml2:SubjectConfirmation Method="urn:oasis:names:tc:SAML:2.0:cm:bearer">
-				<saml2:SubjectConfirmationData NotOnOrAfter="%s" Recipient="https://signin.aws.amazon.com/saml"/>
-			</saml2:SubjectConfirmation>
-		</saml2:Subject>
-		<saml2:Conditions NotBefore="%s" NotOnOrAfter="%s">
-			<saml2:AudienceRestriction>
-				<saml2:Audience>https://signin.aws.amazon.com/saml</saml2:Audience>
-			</saml2:AudienceRestriction>
-		</saml2:Conditions>
-		<saml2:AuthnStatement AuthnInstant="%s" SessionIndex="_1234567890">
-			<saml2:AuthnContext>
-				<saml2:AuthnContextClassRef>urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport</saml2:AuthnContextClassRef>
-			</saml2:AuthnContext>
-		</saml2:AuthnStatement>
-		<saml2:AttributeStatement>
-			<saml2:Attribute Name="https://aws.amazon.com/SAML/Attributes/Role" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
-				<saml2:AttributeValue>%s,arn:aws:iam::123456789012:saml-provider/YourSAMLProvider</saml2:AttributeValue>
-			</saml2:Attribute>
-			<saml2:Attribute Name="https://aws.amazon.com/SAML/Attributes/RoleSessionName" NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">
-				<saml2:AttributeValue>federated-user</saml2:AttributeValue>
-			</saml2:Attribute>
-		</saml2:AttributeStatement>
-	</saml2:Assertion>`,
-		time.Now().Format(time.RFC3339),
-		time.Now().Add(10*time.Minute).Format(time.RFC3339),
-		time.Now().Add(-1*time.Minute).Format(time.RFC3339),
-		time.Now().Add(10*time.Minute).Format(time.RFC3339),
-		time.Now().Format(time.RFC3339),
-		roleARN,
-	)
-
-	// Base64编码
-	samlResponse := base64.StdEncoding.EncodeToString([]byte(samlXML))
-	return samlResponse, nil
-}
-
-// getTemporaryCredentials 获取临时凭证
-func (p *AWSProvider) getTemporaryCredentials(samlResponse, roleARN string) (*stsTypes.Credentials, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// 创建STS客户端
-	// 注意：在实际应用中，应该使用与其他客户端相同的配置
-	// 这里简化处理，使用默认配置
-	// 如果区域为空，使用默认区域
-	region := p.region
-	if region == "" {
-		region = "us-east-1"
-	}
-
-	cfg, err := config.LoadDefaultConfig(context.Background(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(&StaticCredentialsProvider{
-			Value:  p.accessKey,
-			Secret: p.secretKey,
-		}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load AWS config: %w", err)
-	}
-
-	stsClient := sts.NewFromConfig(cfg)
-
-	// 调用AssumeRoleWithSAML API
-	input := &sts.AssumeRoleWithSAMLInput{
-		RoleArn:         aws.String(roleARN),
-		PrincipalArn:    aws.String("arn:aws:iam::123456789012:saml-provider/YourSAMLProvider"),
-		SAMLAssertion:   aws.String(samlResponse),
-		DurationSeconds: aws.Int32(3600), // 1小时
-	}
-
-	response, err := stsClient.AssumeRoleWithSAML(ctx, input)
-	if err != nil {
-		return nil, fmt.Errorf("failed to assume role with SAML: %w", err)
-	}
-
-	return response.Credentials, nil
 }
 
 // isRootUser 检查当前用户是否是根用户

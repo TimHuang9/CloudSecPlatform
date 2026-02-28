@@ -38,7 +38,7 @@ const AKSKUtilization = () => {
   const [filteredResources, setFilteredResources] = useState([])
   const [permissions, setPermissions] = useState({})
   const [loading, setLoading] = useState(false)
-  const [resourceType, setResourceType] = useState('all')
+  const [selectedResourceTypes, setSelectedResourceTypes] = useState(['all'])
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [action, setAction] = useState('list')
   const [resourceId, setResourceId] = useState('')
@@ -52,6 +52,16 @@ const AKSKUtilization = () => {
   const [userInfo, setUserInfo] = useState({})
   const [topologyData, setTopologyData] = useState(null)
   const [topologyLoading, setTopologyLoading] = useState(false)
+  
+  // 资源组管理
+  const [resourceGroups, setResourceGroups] = useState(() => {
+    const savedGroups = localStorage.getItem('resourceGroups')
+    return savedGroups ? JSON.parse(savedGroups) : []
+  })
+  const [selectedResourceGroup, setSelectedResourceGroup] = useState(null)
+  const [showGroupModal, setShowGroupModal] = useState(false)
+  const [currentGroup, setCurrentGroup] = useState({ name: '', resources: [] })
+  const [isEditingGroup, setIsEditingGroup] = useState(false)
 
   // 动态资源类型列表
   const getResourceTypes = () => {
@@ -223,20 +233,53 @@ const AKSKUtilization = () => {
     }
 
     // 检查云提供商是否支持所选资源类型
-    if (selectedCredential.cloudProvider !== 'AWS' && 
-        (resourceType === 'vpc' || resourceType === 'route' || resourceType === 'elb' || resourceType === 'eks' || resourceType === 'kms' || resourceType === 'rds')) {
-      message.warning('当前云提供商不支持该资源类型')
-      return
+    const unsupportedTypes = []
+    if (selectedCredential.cloudProvider !== 'AWS') {
+      selectedResourceTypes.forEach(type => {
+        if (type === 'vpc' || type === 'route' || type === 'elb' || type === 'eks' || type === 'kms' || type === 'rds') {
+          unsupportedTypes.push(type)
+        }
+      })
+      if (unsupportedTypes.length > 0) {
+        message.warning('当前云提供商不支持所选的资源类型')
+        return
+      }
     }
 
     // 定义要枚举的资源类型
     const resourceTypesToEnumerate = []
-    if (resourceType === 'all') {
-      resourceTypesToEnumerate.push('ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds', 'lambda', 'apigateway', 'cloudtrail', 'cloudwatchlogs', 'dynamodb', 'secretsmanager', 'sns', 'sqs')
-    } else if (resourceType === 'iam') {
-      resourceTypesToEnumerate.push('iamRoles', 'iamUsers')
+    const addedTypes = new Set()
+    
+    if (selectedResourceTypes.includes('all')) {
+      // 如果选择了'all'，枚举所有资源
+      const allTypes = ['ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds', 'lambda', 'apigateway', 'cloudtrail', 'cloudwatchlogs', 'dynamodb', 'secretsmanager', 'sns', 'sqs']
+      allTypes.forEach(type => {
+        if (!addedTypes.has(type)) {
+          resourceTypesToEnumerate.push(type)
+          addedTypes.add(type)
+        }
+      })
     } else {
-      resourceTypesToEnumerate.push(resourceType)
+      // 处理选中的资源类型
+      selectedResourceTypes.forEach(type => {
+        if (type === 'iam') {
+          // 处理IAM特殊情况
+          if (!addedTypes.has('iamRoles')) {
+            resourceTypesToEnumerate.push('iamRoles')
+            addedTypes.add('iamRoles')
+          }
+          if (!addedTypes.has('iamUsers')) {
+            resourceTypesToEnumerate.push('iamUsers')
+            addedTypes.add('iamUsers')
+          }
+        } else {
+          // 处理普通资源类型
+          if (!addedTypes.has(type)) {
+            resourceTypesToEnumerate.push(type)
+            addedTypes.add(type)
+          }
+        }
+      })
     }
 
     // 重置进度和状态
@@ -267,7 +310,7 @@ const AKSKUtilization = () => {
 
       const response = await api.post('/cloud/enumerate', {
         credential_id: selectedCredential.id,
-        resource_type: resourceType
+        resource_type: selectedResourceTypes.includes('all') ? 'all' : selectedResourceTypes.join(',')
       })
 
       clearInterval(apiProgressInterval)
@@ -1691,6 +1734,58 @@ const AKSKUtilization = () => {
     }
   }
 
+  // 保存资源组
+  const handleSaveResourceGroup = () => {
+    if (!currentGroup.name || currentGroup.resources.length === 0) {
+      message.warning('请输入资源组名称并选择至少一个资源类型')
+      return
+    }
+
+    let updatedGroups
+    if (isEditingGroup) {
+      updatedGroups = resourceGroups.map(group => 
+        group.id === currentGroup.id ? currentGroup : group
+      )
+    } else {
+      const newGroup = {
+        id: Date.now().toString(),
+        name: currentGroup.name,
+        resources: currentGroup.resources,
+        created: new Date().toISOString()
+      }
+      updatedGroups = [...resourceGroups, newGroup]
+    }
+
+    setResourceGroups(updatedGroups)
+    localStorage.setItem('resourceGroups', JSON.stringify(updatedGroups))
+    setShowGroupModal(false)
+    setCurrentGroup({ name: '', resources: [] })
+    setIsEditingGroup(false)
+    message.success(isEditingGroup ? '资源组更新成功' : '资源组创建成功')
+  }
+
+  // 编辑资源组
+  const handleEditResourceGroup = (group) => {
+    setCurrentGroup({ ...group })
+    setIsEditingGroup(true)
+    setShowGroupModal(true)
+  }
+
+  // 删除资源组
+  const handleDeleteResourceGroup = (groupId) => {
+    const updatedGroups = resourceGroups.filter(group => group.id !== groupId)
+    setResourceGroups(updatedGroups)
+    localStorage.setItem('resourceGroups', JSON.stringify(updatedGroups))
+    message.success('资源组删除成功')
+  }
+
+  // 使用资源组
+  const handleUseResourceGroup = (group) => {
+    setSelectedResourceGroup(group.id)
+    setSelectedResourceTypes(group.resources)
+    message.success(`已选择资源组: ${group.name}`)
+  }
+
   // 生成拓扑测绘
   const handleGenerateTopology = async () => {
     if (!selectedCredential) {
@@ -1700,9 +1795,11 @@ const AKSKUtilization = () => {
 
     setTopologyLoading(true)
     try {
-      // 首先枚举资源，确保有数据
+      // 检查是否有资源数据
       if (resources.length === 0) {
-        await handleEnumerateResources()
+        message.warning('请先枚举资源，然后再生成拓扑图')
+        setTopologyLoading(false)
+        return
       }
 
       // 生成拓扑数据
@@ -1711,49 +1808,15 @@ const AKSKUtilization = () => {
         edges: []
       }
 
-      // 为每种资源类型创建节点
+      // 为VPC和EC2资源创建节点
       const resourceNodes = {}
       
-      // 添加EC2实例节点
-      resources.filter(r => r.type === 'ec2').forEach(instance => {
-        const nodeId = `ec2-${instance.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `EC2: ${instance.name}`,
-          shape: 'box',
-          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
-        })
-      })
-
-      // 添加S3存储桶节点
-      resources.filter(r => r.type === 's3').forEach(bucket => {
-        const nodeId = `s3-${bucket.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `S3: ${bucket.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
-        })
-      })
-
-      // 添加IAM资源节点
-      resources.filter(r => r.type === 'iam').forEach(iam => {
-        const nodeId = `iam-${iam.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `IAM: ${iam.name}`,
-          shape: 'box',
-          style: 'fillcolor:#fff7e6;stroke:#fa8c16;stroke-width:2px'
-        })
-      })
-
       // 添加VPC节点
+      const vpcNodes = {}
       resources.filter(r => r.type === 'vpc').forEach(vpc => {
         const nodeId = `vpc-${vpc.id}`
         resourceNodes[nodeId] = true
+        vpcNodes[vpc.id] = nodeId
         topology.nodes.push({
           id: nodeId,
           label: `VPC: ${vpc.name}`,
@@ -1762,145 +1825,13 @@ const AKSKUtilization = () => {
         })
       })
 
-      // 添加ELB节点
-      resources.filter(r => r.type === 'elb').forEach(elb => {
-        const nodeId = `elb-${elb.id}`
+      // 添加EC2实例节点
+      resources.filter(r => r.type === 'ec2').forEach(instance => {
+        const nodeId = `ec2-${instance.id}`
         resourceNodes[nodeId] = true
         topology.nodes.push({
           id: nodeId,
-          label: `ELB: ${elb.name}`,
-          shape: 'box',
-          style: 'fillcolor:#e8f5ff;stroke:#13c2c2;stroke-width:2px'
-        })
-      })
-
-      // 添加EKS集群节点
-      resources.filter(r => r.type === 'eks').forEach(cluster => {
-        const nodeId = `eks-${cluster.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `EKS: ${cluster.name}`,
-          shape: 'box',
-          style: 'fillcolor:#fff1f0;stroke:#eb2f96;stroke-width:2px'
-        })
-      })
-
-      // 添加RDS数据库节点
-      resources.filter(r => r.type === 'rds').forEach(rds => {
-        const nodeId = `rds-${rds.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `RDS: ${rds.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f0f5ff;stroke:#2f54eb;stroke-width:2px'
-        })
-      })
-
-      // 添加KMS密钥节点
-      resources.filter(r => r.type === 'kms').forEach(key => {
-        const nodeId = `kms-${key.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `KMS: ${key.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
-        })
-      })
-
-      // 添加Lambda函数节点
-      resources.filter(r => r.type === 'lambda').forEach(lambda => {
-        const nodeId = `lambda-${lambda.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `Lambda: ${lambda.name}`,
-          shape: 'box',
-          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
-        })
-      })
-
-      // 添加API Gateway节点
-      resources.filter(r => r.type === 'apigateway').forEach(api => {
-        const nodeId = `apigateway-${api.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `API Gateway: ${api.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f9f0ff;stroke:#722ed1;stroke-width:2px'
-        })
-      })
-
-      // 添加CloudTrail节点
-      resources.filter(r => r.type === 'cloudtrail').forEach(trail => {
-        const nodeId = `cloudtrail-${trail.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `CloudTrail: ${trail.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f0f5ff;stroke:#2f54eb;stroke-width:2px'
-        })
-      })
-
-      // 添加CloudWatch Logs节点
-      resources.filter(r => r.type === 'cloudwatchlogs').forEach(logGroup => {
-        const nodeId = `cloudwatchlogs-${logGroup.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `CloudWatch Logs: ${logGroup.name}`,
-          shape: 'box',
-          style: 'fillcolor:#fff7e6;stroke:#fa8c16;stroke-width:2px'
-        })
-      })
-
-      // 添加DynamoDB表节点
-      resources.filter(r => r.type === 'dynamodb').forEach(table => {
-        const nodeId = `dynamodb-${table.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `DynamoDB: ${table.name}`,
-          shape: 'box',
-          style: 'fillcolor:#e8f5ff;stroke:#13c2c2;stroke-width:2px'
-        })
-      })
-
-      // 添加Secrets Manager节点
-      resources.filter(r => r.type === 'secretsmanager').forEach(secret => {
-        const nodeId = `secretsmanager-${secret.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `Secrets Manager: ${secret.name}`,
-          shape: 'box',
-          style: 'fillcolor:#fff1f0;stroke:#eb2f96;stroke-width:2px'
-        })
-      })
-
-      // 添加SNS主题节点
-      resources.filter(r => r.type === 'sns').forEach(topic => {
-        const nodeId = `sns-${topic.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `SNS: ${topic.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f6ffed;stroke:#52c41a;stroke-width:2px'
-        })
-      })
-
-      // 添加SQS队列节点
-      resources.filter(r => r.type === 'sqs').forEach(queue => {
-        const nodeId = `sqs-${queue.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `SQS: ${queue.name}`,
+          label: `EC2: ${instance.name}`,
           shape: 'box',
           style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
         })
@@ -2059,26 +1990,97 @@ const AKSKUtilization = () => {
           <Tabs activeKey={activeTab} onChange={setActiveTab}>
             {/* 资源枚举 */}
             <TabPane tab="资源枚举" key="enumerate">
-              <div style={{ marginBottom: 16 }}>
+              <div style={{ marginBottom: 24 }}>
+                {/* 资源组管理 */}
+                <div style={{ marginBottom: 16, padding: 16, backgroundColor: '#f0f2f5', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text strong>资源组管理</Text>
+                    <Button 
+                      type="dashed" 
+                      onClick={() => {
+                        setCurrentGroup({ name: '', resources: [] })
+                        setIsEditingGroup(false)
+                        setShowGroupModal(true)
+                      }}
+                    >
+                      创建资源组
+                    </Button>
+                  </div>
+                  
+                  {resourceGroups.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      {resourceGroups.map(group => (
+                        <Card 
+                          key={group.id}
+                          style={{ width: 200, marginBottom: 8 }}
+                          hoverable
+                          actions={[
+                            <Button 
+                              key="use" 
+                              size="small" 
+                              onClick={() => handleUseResourceGroup(group)}
+                              type={selectedResourceGroup === group.id ? "primary" : "default"}
+                            >
+                              使用
+                            </Button>,
+                            <Button 
+                              key="edit" 
+                              size="small" 
+                              onClick={() => handleEditResourceGroup(group)}
+                            >
+                              编辑
+                            </Button>,
+                            <Button 
+                              key="delete" 
+                              size="small" 
+                              danger 
+                              onClick={() => handleDeleteResourceGroup(group.id)}
+                            >
+                              删除
+                            </Button>
+                          ]}
+                        >
+                          <Card.Meta 
+                            title={group.name}
+                            description={`包含 ${group.resources.length} 个资源类型`}
+                          />
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">暂无资源组，点击"创建资源组"按钮创建</Text>
+                  )}
+                </div>
+                
+                {/* 资源类型选择 */}
                 <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-                  <Select
-                    style={{ width: 200, marginRight: 16 }}
-                    value={resourceType}
-                    onChange={setResourceType}
-                  >
-                    {getResourceTypes().map(type => (
-                      <Option key={type.value} value={type.value}>{type.label}</Option>
-                    ))}
-                  </Select>
-                  <Button 
-                    type="primary" 
-                    icon={<SearchOutlined />}
-                    onClick={handleEnumerateResources}
-                    loading={loading}
-                  >
-                    枚举资源
-                  </Button>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                    <Text strong style={{ marginRight: 16 }}>选择资源类型：</Text>
+                    <Select
+                      style={{ flex: 1, maxWidth: 400, marginRight: 16 }}
+                      mode="multiple"
+                      placeholder="选择要枚举的资源类型"
+                      value={selectedResourceTypes}
+                      onChange={setSelectedResourceTypes}
+                      optionLabelProp="label"
+                    >
+                      {getResourceTypes().map(type => (
+                        <Option key={type.value} value={type.value} label={type.label}>
+                          <div style={{ display: 'flex', alignItems: 'center' }}>
+                            <div style={{ marginRight: 8 }}>{type.label}</div>
+                          </div>
+                        </Option>
+                      ))}
+                    </Select>
+                    <Button 
+                      type="primary" 
+                      icon={<SearchOutlined />}
+                      onClick={handleEnumerateResources}
+                      loading={loading}
+                    >
+                      枚举资源
+                    </Button>
+                  </div>
                 </div>
                 
                 {/* 枚举进度条 */}
@@ -2193,9 +2195,7 @@ const AKSKUtilization = () => {
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>
                     <Text type="secondary">请点击"枚举资源"按钮获取资源列表</Text>
                   </div>
-                )}
-              </div>
-              </div>
+                )}              </div>
             </TabPane>
 
             {/* 权限分析 */}
@@ -2689,6 +2689,50 @@ const AKSKUtilization = () => {
           </div>
         </Card>
       )}
+      
+      {/* 资源组创建/编辑模态框 */}
+      <Modal
+        title={isEditingGroup ? '编辑资源组' : '创建资源组'}
+        open={showGroupModal}
+        onOk={handleSaveResourceGroup}
+        onCancel={() => setShowGroupModal(false)}
+      >
+        <Form layout="vertical">
+          <Form.Item
+            label="资源组名称"
+            rules={[{ required: true, message: '请输入资源组名称' }]}
+          >
+            <Input
+              value={currentGroup.name}
+              onChange={(e) => setCurrentGroup({ ...currentGroup, name: e.target.value })}
+              placeholder="请输入资源组名称"
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="选择资源类型"
+            rules={[{ required: true, message: '请选择至少一个资源类型' }]}
+          >
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="选择资源类型"
+              value={currentGroup.resources}
+              onChange={(resources) => setCurrentGroup({ ...currentGroup, resources })}
+            >
+              {getResourceTypes().map(type => (
+                <Option key={type.value} value={type.value}>{type.label}</Option>
+              ))}
+            </Select>
+          </Form.Item>
+          
+          {currentGroup.resources.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary">已选择 {currentGroup.resources.length} 个资源类型</Text>
+            </div>
+          )}
+        </Form>
+      </Modal>
     </div>
   )
 }
