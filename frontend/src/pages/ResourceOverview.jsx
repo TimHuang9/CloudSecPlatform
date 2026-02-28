@@ -1582,7 +1582,7 @@ const ResourceOverview = () => {
           
           <div style={{ display: 'flex', gap: 16 }}>
             {/* 左侧区域栏目 */}
-            <div style={{ width: 240, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', flexShrink: 0 }}>
+            <div style={{ width: 260, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', flexShrink: 0, minWidth: 260 }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
                 <SearchOutlined style={{ marginRight: 8, color: '#1890ff' }} />
                 <Text strong style={{ fontSize: 16 }}>区域筛选</Text>
@@ -1601,7 +1601,8 @@ const ResourceOverview = () => {
                     alignItems: 'center',
                     transition: 'all 0.3s ease',
                     width: '100%',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    minWidth: '100%'
                   }}
                   onClick={() => setSelectedRegion('all')}
                 >
@@ -1650,14 +1651,15 @@ const ResourceOverview = () => {
                         color: selectedRegion === region ? '#ffffff' : '#333333',
                         transition: 'all 0.3s ease',
                         width: '100%',
-                        boxSizing: 'border-box'
+                        boxSizing: 'border-box',
+                        minWidth: '100%'
                       }}
                       onClick={() => setSelectedRegion(region)}
                     >
                       <div style={{ marginBottom: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontWeight: 500 }}>{region || '无区域'}</span>
-                          <span style={{ backgroundColor: selectedRegion === region ? 'rgba(255, 255, 255, 0.3)' : '#e8e8e8', padding: '2px 8px', borderRadius: 12, fontSize: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
+                          <span style={{ fontWeight: 500, wordBreak: 'break-all' }}>{region || '无区域'}</span>
+                          <span style={{ backgroundColor: selectedRegion === region ? 'rgba(255, 255, 255, 0.3)' : '#e8e8e8', padding: '2px 8px', borderRadius: 12, fontSize: 12, whiteSpace: 'nowrap' }}>
                             {regionResources.length}
                           </span>
                         </div>
