@@ -268,610 +268,620 @@ const AKSKUtilization = () => {
         
         // 逐个处理每个资源类型
         for (const resourceType of resourceTypesToEnumerate) {
-          switch (resourceType) {
-            case 'ec2':
-              if (result.instances && Array.isArray(result.instances)) {
-                const regions = [...new Set(result.instances.map(instance => instance.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 EC2 实例 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 EC2 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 EC2 实例 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 EC2 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 EC2 实例 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
-                      }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.instances.forEach(instance => {
-                  resources.push({
-                    id: instance.instanceId,
-                    name: instance.tags?.Name || `Instance ${instance.instanceId}`,
-                    type: 'ec2',
-                    status: instance.state,
-                    region: instance.region || selectedCredential.region,
-                    tags: instance.tags
+          try {
+            switch (resourceType) {
+              case 'ec2':
+                if (result.instances && Array.isArray(result.instances)) {
+                  const regions = [...new Set(result.instances.map(instance => instance.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 EC2 实例 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 EC2 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 EC2 实例 (区域: ${regions.join(', ')})` }
+                    return updated
                   })
-                })
-                
-                // 更新 EC2 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 EC2 实例 (区域: ${regions.join(', ')}, ${result.instances.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 EC2 实例，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 EC2 实例` }
-                  return updated
-                })
-              }
-              break
-              
-            case 's3':
-              if (result.buckets && Array.isArray(result.buckets)) {
-                const regions = [...new Set(result.buckets.map(bucket => bucket.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 S3 存储桶 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 S3 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 S3 存储桶 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 S3 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 S3 存储桶 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                  
+                  // 模拟 EC2 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 EC2 实例 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.buckets.forEach(bucket => {
-                  resources.push({
-                    id: bucket.bucketName,
-                    name: bucket.bucketName,
-                    type: 's3',
-                    status: 'active',
-                    region: bucket.region || selectedCredential.region,
-                    objects: bucket.objects || [],
-                    moreObjects: bucket.moreObjects || false
+                    }, 200)
                   })
-                })
+                  
+                  result.instances.forEach(instance => {
+                    resources.push({
+                      id: instance.instanceId,
+                      name: instance.tags?.Name || `Instance ${instance.instanceId}`,
+                      type: 'ec2',
+                      status: instance.state,
+                      region: instance.region || selectedCredential.region,
+                      tags: instance.tags
+                    })
+                  })
+                  
+                  // 更新 EC2 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 EC2 实例 (区域: ${regions.join(', ')}, ${result.instances.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 EC2 实例，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 EC2 实例` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 S3 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 S3 存储桶 (区域: ${regions.join(', ')}, ${result.buckets.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 S3 存储桶，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 S3 存储桶` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'iamRoles':
-              if (result.roles && Array.isArray(result.roles)) {
-                setEnumerationStatus(`枚举 IAM 角色 (全局资源)...`)
-                
-                // 更新 IAM 角色进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 IAM 角色 (全局资源)` }
-                  return updated
-                })
-                
-                // 模拟 IAM 角色处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 25
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 IAM 角色 (全局资源)... ${Math.min(progress, 100)}%`
+              case 's3':
+                if (result.buckets && Array.isArray(result.buckets)) {
+                  const regions = [...new Set(result.buckets.map(bucket => bucket.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 S3 存储桶 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 S3 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 S3 存储桶 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 S3 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 S3 存储桶 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 150)
-                })
-                
-                result.roles.forEach(role => {
-                  resources.push({
-                    id: role.roleId,
-                    name: role.roleName,
-                    type: 'iam',
-                    status: 'active',
-                    region: role.region || selectedCredential.region,
-                    permissions: [] // 后端未返回权限信息
+                    }, 200)
                   })
-                })
+                  
+                  result.buckets.forEach(bucket => {
+                    resources.push({
+                      id: bucket.bucketName,
+                      name: bucket.bucketName,
+                      type: 's3',
+                      status: 'active',
+                      region: bucket.region || selectedCredential.region,
+                      objects: bucket.objects || [],
+                      moreObjects: bucket.moreObjects || false
+                    })
+                  })
+                  
+                  // 更新 S3 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 S3 存储桶 (区域: ${regions.join(', ')}, ${result.buckets.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 S3 存储桶，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 S3 存储桶` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 IAM 角色进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 IAM 角色 (全局资源, ${result.roles.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 IAM 角色，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 IAM 角色` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'iamUsers':
-              if (result.users && Array.isArray(result.users)) {
-                setEnumerationStatus(`枚举 IAM 用户 (全局资源)...`)
-                
-                // 更新 IAM 用户进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 IAM 用户 (全局资源)` }
-                  return updated
-                })
-                
-                // 模拟 IAM 用户处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 25
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 IAM 用户 (全局资源)... ${Math.min(progress, 100)}%`
+              case 'iamRoles':
+                if (result.roles && Array.isArray(result.roles)) {
+                  setEnumerationStatus(`枚举 IAM 角色 (全局资源)...`)
+                  
+                  // 更新 IAM 角色进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 IAM 角色 (全局资源)` }
+                    return updated
+                  })
+                  
+                  // 模拟 IAM 角色处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 25
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 IAM 角色 (全局资源)... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 150)
-                })
-                
-                result.users.forEach(user => {
-                  resources.push({
-                    id: user.userId,
-                    name: user.userName,
-                    type: 'iam',
-                    status: 'active',
-                    region: user.region || selectedCredential.region,
-                    permissions: [] // 后端未返回权限信息
+                    }, 150)
                   })
-                })
+                  
+                  result.roles.forEach(role => {
+                    resources.push({
+                      id: role.roleId,
+                      name: role.roleName,
+                      type: 'iam',
+                      status: 'active',
+                      region: role.region || selectedCredential.region,
+                      permissions: [] // 后端未返回权限信息
+                    })
+                  })
+                  
+                  // 更新 IAM 角色进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 IAM 角色 (全局资源, ${result.roles.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 IAM 角色，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 IAM 角色` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 IAM 用户进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 IAM 用户 (全局资源, ${result.users.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 IAM 用户，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 IAM 用户` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'vpc':
-              if (result.vpcs && Array.isArray(result.vpcs)) {
-                const regions = [...new Set(result.vpcs.map(vpc => vpc.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 VPC 资源 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 VPC 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 VPC 资源 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 VPC 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 VPC 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'iamUsers':
+                if (result.users && Array.isArray(result.users)) {
+                  setEnumerationStatus(`枚举 IAM 用户 (全局资源)...`)
+                  
+                  // 更新 IAM 用户进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 IAM 用户 (全局资源)` }
+                    return updated
+                  })
+                  
+                  // 模拟 IAM 用户处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 25
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 IAM 用户 (全局资源)... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.vpcs.forEach(vpc => {
-                  resources.push({
-                    id: vpc.vpcId,
-                    name: vpc.tags?.Name || vpc.vpcId,
-                    type: 'vpc',
-                    status: vpc.state,
-                    region: vpc.region || selectedCredential.region,
-                    cidrBlock: vpc.cidrBlock,
-                    isDefault: vpc.isDefault,
-                    tags: vpc.tags
+                    }, 150)
                   })
-                })
+                  
+                  result.users.forEach(user => {
+                    resources.push({
+                      id: user.userId,
+                      name: user.userName,
+                      type: 'iam',
+                      status: 'active',
+                      region: user.region || selectedCredential.region,
+                      permissions: [] // 后端未返回权限信息
+                    })
+                  })
+                  
+                  // 更新 IAM 用户进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 IAM 用户 (全局资源, ${result.users.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 IAM 用户，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 IAM 用户` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 VPC 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 VPC 资源 (区域: ${regions.join(', ')}, ${result.vpcs.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 VPC 资源，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 VPC 资源` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'route':
-              if (result.routeTables && Array.isArray(result.routeTables)) {
-                const regions = [...new Set(result.routeTables.map(rt => rt.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 路由表 资源 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 路由表 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 路由表 资源 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 路由表 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 路由表 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'vpc':
+                if (result.vpcs && Array.isArray(result.vpcs)) {
+                  const regions = [...new Set(result.vpcs.map(vpc => vpc.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 VPC 资源 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 VPC 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 VPC 资源 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 VPC 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 VPC 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.routeTables.forEach(rt => {
-                  resources.push({
-                    id: rt.routeTableId,
-                    name: rt.tags?.Name || rt.routeTableId,
-                    type: 'route',
-                    status: 'active',
-                    region: rt.region || selectedCredential.region,
-                    vpcId: rt.vpcId,
-                    routes: rt.routes,
-                    tags: rt.tags
+                    }, 200)
                   })
-                })
+                  
+                  result.vpcs.forEach(vpc => {
+                    resources.push({
+                      id: vpc.vpcId,
+                      name: vpc.tags?.Name || vpc.vpcId,
+                      type: 'vpc',
+                      status: vpc.state,
+                      region: vpc.region || selectedCredential.region,
+                      cidrBlock: vpc.cidrBlock,
+                      isDefault: vpc.isDefault,
+                      tags: vpc.tags
+                    })
+                  })
+                  
+                  // 更新 VPC 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 VPC 资源 (区域: ${regions.join(', ')}, ${result.vpcs.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 VPC 资源，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 VPC 资源` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 路由表 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 路由表 资源 (区域: ${regions.join(', ')}, ${result.routeTables.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 路由表 资源，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 路由表 资源` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'elb':
-              if (result.elbs && Array.isArray(result.elbs)) {
-                const regions = [...new Set(result.elbs.map(elb => elb.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 ELB 资源 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 ELB 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 ELB 资源 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 ELB 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 ELB 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'route':
+                if (result.routeTables && Array.isArray(result.routeTables)) {
+                  const regions = [...new Set(result.routeTables.map(rt => rt.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 路由表 资源 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 路由表 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 路由表 资源 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 路由表 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 路由表 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.elbs.forEach(elb => {
-                  resources.push({
-                    id: elb.loadBalancerArn,
-                    name: elb.loadBalancerName,
-                    type: 'elb',
-                    status: elb.state,
-                    region: elb.region || selectedCredential.region,
-                    elbType: elb.type,
-                    dnsName: elb.dnsName,
-                    availabilityZones: elb.availabilityZones,
-                    securityGroups: elb.securityGroups
+                    }, 200)
                   })
-                })
+                  
+                  result.routeTables.forEach(rt => {
+                    resources.push({
+                      id: rt.routeTableId,
+                      name: rt.tags?.Name || rt.routeTableId,
+                      type: 'route',
+                      status: 'active',
+                      region: rt.region || selectedCredential.region,
+                      vpcId: rt.vpcId,
+                      routes: rt.routes,
+                      tags: rt.tags
+                    })
+                  })
+                  
+                  // 更新 路由表 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 路由表 资源 (区域: ${regions.join(', ')}, ${result.routeTables.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 路由表 资源，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 路由表 资源` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 ELB 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 ELB 资源 (区域: ${regions.join(', ')}, ${result.elbs.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 ELB 资源，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 ELB 资源` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'eks':
-              if (result.eksClusters && Array.isArray(result.eksClusters)) {
-                const regions = [...new Set(result.eksClusters.map(cluster => cluster.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 EKS 集群 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 EKS 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 EKS 集群 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 EKS 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 EKS 集群 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'elb':
+                if (result.elbs && Array.isArray(result.elbs)) {
+                  const regions = [...new Set(result.elbs.map(elb => elb.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 ELB 资源 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 ELB 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 ELB 资源 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 ELB 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 ELB 资源 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.eksClusters.forEach(cluster => {
-                  resources.push({
-                    id: cluster.arn,
-                    name: cluster.name,
-                    type: 'eks',
-                    status: cluster.status,
-                    region: cluster.region || selectedCredential.region,
-                    version: cluster.version,
-                    endpoint: cluster.endpoint,
-                    createdAt: cluster.createdAt
+                    }, 200)
                   })
-                })
+                  
+                  result.elbs.forEach(elb => {
+                    resources.push({
+                      id: elb.loadBalancerArn,
+                      name: elb.loadBalancerName,
+                      type: 'elb',
+                      status: elb.state,
+                      region: elb.region || selectedCredential.region,
+                      elbType: elb.type,
+                      dnsName: elb.dnsName,
+                      availabilityZones: elb.availabilityZones,
+                      securityGroups: elb.securityGroups
+                    })
+                  })
+                  
+                  // 更新 ELB 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 ELB 资源 (区域: ${regions.join(', ')}, ${result.elbs.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 ELB 资源，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 ELB 资源` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 EKS 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 EKS 集群 (区域: ${regions.join(', ')}, ${result.eksClusters.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 EKS 集群，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 EKS 集群` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'kms':
-              if (result.kmsKeys && Array.isArray(result.kmsKeys)) {
-                const regions = [...new Set(result.kmsKeys.map(key => key.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 KMS 密钥 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 KMS 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 KMS 密钥 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 KMS 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 KMS 密钥 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'eks':
+                if (result.eksClusters && Array.isArray(result.eksClusters)) {
+                  const regions = [...new Set(result.eksClusters.map(cluster => cluster.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 EKS 集群 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 EKS 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 EKS 集群 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 EKS 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 EKS 集群 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.kmsKeys.forEach(key => {
-                  resources.push({
-                    id: key.keyId,
-                    name: key.description || key.keyId,
-                    type: 'kms',
-                    status: key.keyState,
-                    region: key.region || selectedCredential.region,
-                    keyUsage: key.keyUsage,
-                    arn: key.arn,
-                    creationDate: key.creationDate
+                    }, 200)
                   })
-                })
+                  
+                  result.eksClusters.forEach(cluster => {
+                    resources.push({
+                      id: cluster.arn,
+                      name: cluster.name,
+                      type: 'eks',
+                      status: cluster.status,
+                      region: cluster.region || selectedCredential.region,
+                      version: cluster.version,
+                      endpoint: cluster.endpoint,
+                      createdAt: cluster.createdAt
+                    })
+                  })
+                  
+                  // 更新 EKS 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 EKS 集群 (区域: ${regions.join(', ')}, ${result.eksClusters.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 EKS 集群，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 EKS 集群` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 KMS 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 KMS 密钥 (区域: ${regions.join(', ')}, ${result.kmsKeys.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 KMS 密钥，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 KMS 密钥` }
-                  return updated
-                })
-              }
-              break
-              
-            case 'rds':
-              if (result.rdsInstances && Array.isArray(result.rdsInstances)) {
-                const regions = [...new Set(result.rdsInstances.map(instance => instance.region || selectedCredential.region))]
-                setEnumerationStatus(`枚举 RDS 数据库 (区域: ${regions.join(', ')})...`)
-                
-                // 更新 RDS 进度条状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 0, status: `开始枚举 RDS 数据库 (区域: ${regions.join(', ')})` }
-                  return updated
-                })
-                
-                // 模拟 RDS 处理进度
-                await new Promise(resolve => {
-                  let progress = 0
-                  const interval = setInterval(() => {
-                    progress += 20
-                    setEnumerationProgresses(prev => {
-                      const updated = { ...prev }
-                      updated[resourceType] = { 
-                        progress: Math.min(progress, 100), 
-                        status: `处理 RDS 数据库 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+              case 'kms':
+                if (result.kmsKeys && Array.isArray(result.kmsKeys)) {
+                  const regions = [...new Set(result.kmsKeys.map(key => key.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 KMS 密钥 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 KMS 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 KMS 密钥 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 KMS 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 KMS 密钥 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
                       }
-                      return updated
-                    })
-                    if (progress >= 100) {
-                      clearInterval(interval)
-                      resolve()
-                    }
-                  }, 200)
-                })
-                
-                result.rdsInstances.forEach(instance => {
-                  resources.push({
-                    id: instance.dbInstanceIdentifier,
-                    name: instance.dbInstanceIdentifier,
-                    type: 'rds',
-                    status: instance.status,
-                    region: instance.region || selectedCredential.region,
-                    engine: instance.engine,
-                    engineVersion: instance.engineVersion,
-                    dbInstanceClass: instance.dbInstanceClass,
-                    allocatedStorage: instance.allocatedStorage,
-                    multiAZ: instance.multiAZ
+                    }, 200)
                   })
-                })
+                  
+                  result.kmsKeys.forEach(key => {
+                    resources.push({
+                      id: key.keyId,
+                      name: key.description || key.keyId,
+                      type: 'kms',
+                      status: key.keyState,
+                      region: key.region || selectedCredential.region,
+                      keyUsage: key.keyUsage,
+                      arn: key.arn,
+                      creationDate: key.creationDate
+                    })
+                  })
+                  
+                  // 更新 KMS 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 KMS 密钥 (区域: ${regions.join(', ')}, ${result.kmsKeys.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 KMS 密钥，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 KMS 密钥` }
+                    return updated
+                  })
+                }
+                break
                 
-                // 更新 RDS 进度条为完成状态
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `完成枚举 RDS 数据库 (区域: ${regions.join(', ')}, ${result.rdsInstances.length} 个)` }
-                  return updated
-                })
-              } else {
-                // 如果没有 RDS 数据库，标记为完成
-                setEnumerationProgresses(prev => {
-                  const updated = { ...prev }
-                  updated[resourceType] = { progress: 100, status: `没有发现 RDS 数据库` }
-                  return updated
-                })
-              }
-              break
+              case 'rds':
+                if (result.rdsInstances && Array.isArray(result.rdsInstances)) {
+                  const regions = [...new Set(result.rdsInstances.map(instance => instance.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 RDS 数据库 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 RDS 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 RDS 数据库 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 RDS 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 RDS 数据库 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.rdsInstances.forEach(instance => {
+                    resources.push({
+                      id: instance.dbInstanceIdentifier,
+                      name: instance.dbInstanceIdentifier,
+                      type: 'rds',
+                      status: instance.status,
+                      region: instance.region || selectedCredential.region,
+                      engine: instance.engine,
+                      engineVersion: instance.engineVersion,
+                      dbInstanceClass: instance.dbInstanceClass,
+                      allocatedStorage: instance.allocatedStorage,
+                      multiAZ: instance.multiAZ
+                    })
+                  })
+                  
+                  // 更新 RDS 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 RDS 数据库 (区域: ${regions.join(', ')}, ${result.rdsInstances.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 RDS 数据库，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 RDS 数据库` }
+                    return updated
+                  })
+                }
+                break
+            }
+          } catch (resourceError) {
+            console.error(`处理 ${resourceType} 资源时出错:`, resourceError)
+            // 标记该资源类型为失败，但继续处理其他资源类型
+            setEnumerationProgresses(prev => {
+              const updated = { ...prev }
+              updated[resourceType] = { progress: 100, status: `处理 ${resourceType} 资源时出错` }
+              return updated
+            })
           }
           
           // 每个资源类型处理完成后，延迟一下再处理下一个

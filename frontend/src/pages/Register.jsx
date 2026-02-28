@@ -48,8 +48,8 @@ const Register = () => {
         }} 
         title={
           <div style={{ textAlign: 'center', padding: '20px 0', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: '#ffffff', margin: '-24px -24px 24px -24px' }}>
-            <Title level={3} style={{ color: '#ffffff', marginBottom: 8, fontWeight: 'bold' }}>云红队平台</Title>
-            <Text style={{ color: 'rgba(255, 255, 255, 0.9)' }}>云红队平台注册</Text>
+            <Title level={3} style={{ color: '#ffffff', marginBottom: 8, fontWeight: 'bold' }}>云安全评估平台</Title>
+            <Text style={{ color: 'rgba(255, 255, 255, 0.9)' }}>云安全评估平台注册</Text>
           </div>
         }
       >

@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
+	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -21,7 +22,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	sts "github.com/aws/aws-sdk-go-v2/service/sts"
-	"github.com/aws/aws-sdk-go-v2/service/sts/types"
+	stsTypes "github.com/aws/aws-sdk-go-v2/service/sts/types"
 )
 
 // AWSProvider AWS云平台实现
@@ -1358,8 +1359,36 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				return nil, fmt.Errorf("command is required")
 			}
 
+			// 检查实例状态
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+
+			// 检查实例状态
+			ec2Input := &ec2.DescribeInstancesInput{
+				InstanceIds: []string{resourceID},
+			}
+			ec2Resp, err := p.ec2Client.DescribeInstances(ctx, ec2Input)
+			if err != nil {
+				return nil, fmt.Errorf("failed to describe instance: %w", err)
+			}
+
+			if len(ec2Resp.Reservations) == 0 || len(ec2Resp.Reservations[0].Instances) == 0 {
+				return nil, fmt.Errorf("instance not found")
+			}
+
+			instance := ec2Resp.Reservations[0].Instances[0]
+			if instance.State == nil || string(instance.State.Name) != "running" {
+				return nil, fmt.Errorf("instance is not in running state")
+			}
+
+			// 检查并创建实例配置文件
+			err = p.checkAndCreateInstanceProfile(ctx, resourceID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check or create instance profile: %w", err)
+			}
+
 			// 创建带有超时的上下文
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			// 调用SSM SendCommand API执行命令
@@ -1371,15 +1400,17 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				},
 			})
 			if err != nil {
-				return nil, fmt.Errorf("failed to send command: %w", err)
+				return nil, fmt.Errorf("failed to send command: %v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err)
 			}
 
-			// 返回命令执行结果
+			// 立即返回，不等待命令执行完成
 			return map[string]interface{}{
-				"message":   "Command executed successfully",
+				"message":    "Command sent successfully",
 				"instanceId": resourceID,
 				"commandId":  *resp.Command.CommandId,
 				"command":    command,
+				"status":     "pending",
+				"note":       "Command is being executed asynchronously. Use the command ID to check status later.",
 			}, nil
 		}
 	}
@@ -1558,6 +1589,153 @@ func (p *AWSProvider) Takeover() (map[string]interface{}, error) {
 	}, nil
 }
 
+// checkAndCreateInstanceProfile 检查并创建实例配置文件
+func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanceID string) error {
+	// 检查实例是否已经有关联的实例配置文件
+	ec2Input := &ec2.DescribeInstancesInput{
+		InstanceIds: []string{instanceID},
+	}
+
+	ec2Resp, err := p.ec2Client.DescribeInstances(ctx, ec2Input)
+	if err != nil {
+		return fmt.Errorf("failed to describe instance: %w", err)
+	}
+
+	instance := ec2Resp.Reservations[0].Instances[0]
+	if instance.IamInstanceProfile != nil {
+		return nil
+	}
+
+	// 创建实例配置文件和角色
+	profileName := "aws-key-tools-profile"
+	roleName := "aws-key-tools-role"
+
+	// 检查角色是否存在
+	roleExists := false
+	listRolesInput := &iam.ListRolesInput{}
+	listRolesResp, err := p.iamClient.ListRoles(ctx, listRolesInput)
+	if err == nil {
+		for _, role := range listRolesResp.Roles {
+			if role.RoleName != nil && *role.RoleName == roleName {
+				roleExists = true
+				break
+			}
+		}
+	}
+
+	if !roleExists {
+		// 创建角色
+		createRoleInput := &iam.CreateRoleInput{
+			RoleName: aws.String(roleName),
+			AssumeRolePolicyDocument: aws.String(`{
+				"Version": "2012-10-17",
+				"Statement": [
+					{
+						"Effect": "Allow",
+						"Principal": {
+							"Service": "ec2.amazonaws.com"
+						},
+						"Action": "sts:AssumeRole"
+					}
+				]
+			}`),
+		}
+
+		_, err = p.iamClient.CreateRole(ctx, createRoleInput)
+		if err != nil {
+			return fmt.Errorf("failed to create role: %w", err)
+		}
+
+		// 附加SSM权限策略
+		attachPolicyInput := &iam.AttachRolePolicyInput{
+			RoleName:  aws.String(roleName),
+			PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"),
+		}
+
+		_, err = p.iamClient.AttachRolePolicy(ctx, attachPolicyInput)
+		if err != nil {
+			return fmt.Errorf("failed to attach policy: %w", err)
+		}
+	}
+
+	// 检查实例配置文件是否存在
+	profileExists := false
+	listProfilesInput := &iam.ListInstanceProfilesInput{}
+	listProfilesResp, err := p.iamClient.ListInstanceProfiles(ctx, listProfilesInput)
+	if err == nil {
+		for _, profile := range listProfilesResp.InstanceProfiles {
+			if profile.InstanceProfileName != nil && *profile.InstanceProfileName == profileName {
+				profileExists = true
+				break
+			}
+		}
+	}
+
+	if !profileExists {
+		// 创建实例配置文件
+		createProfileInput := &iam.CreateInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+		}
+
+		_, err = p.iamClient.CreateInstanceProfile(ctx, createProfileInput)
+		if err != nil {
+			return fmt.Errorf("failed to create instance profile: %w", err)
+		}
+
+		// 将角色添加到实例配置文件
+		addRoleInput := &iam.AddRoleToInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+			RoleName:            aws.String(roleName),
+		}
+
+		_, err = p.iamClient.AddRoleToInstanceProfile(ctx, addRoleInput)
+		if err != nil {
+			return fmt.Errorf("failed to add role to instance profile: %w", err)
+		}
+	}
+
+	// 等待实例配置文件创建完成
+	time.Sleep(5 * time.Second)
+
+	// 验证实例配置文件是否存在
+	var getProfileErr error
+
+	// 尝试多次获取实例配置文件
+	for i := 0; i < 3; i++ {
+		getProfileInput := &iam.GetInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+		}
+
+		_, getProfileErr = p.iamClient.GetInstanceProfile(ctx, getProfileInput)
+		if getProfileErr == nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	if getProfileErr != nil {
+		return fmt.Errorf("failed to get instance profile: %w", getProfileErr)
+	}
+
+	// 等待实例配置文件可用
+	time.Sleep(10 * time.Second)
+
+	// 将实例配置文件附加到EC2实例
+	associateInput := &ec2.AssociateIamInstanceProfileInput{
+		IamInstanceProfile: &types.IamInstanceProfileSpecification{
+			Name: aws.String(profileName),
+		},
+		InstanceId: aws.String(instanceID),
+	}
+
+	_, err = p.ec2Client.AssociateIamInstanceProfile(ctx, associateInput)
+	if err != nil {
+		return fmt.Errorf("failed to associate instance profile: %w", err)
+	}
+
+	return nil
+}
+
 // createOrGetFederatedRole 创建或获取联邦登录角色
 func (p *AWSProvider) createOrGetFederatedRole(roleName string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -1660,7 +1838,7 @@ func (p *AWSProvider) generateSAMLResponse(roleARN string) (string, error) {
 }
 
 // getTemporaryCredentials 获取临时凭证
-func (p *AWSProvider) getTemporaryCredentials(samlResponse, roleARN string) (*types.Credentials, error) {
+func (p *AWSProvider) getTemporaryCredentials(samlResponse, roleARN string) (*stsTypes.Credentials, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -1726,7 +1904,7 @@ func (p *AWSProvider) isRootUser() (bool, error) {
 }
 
 // assumeRole 使用AssumeRole API获取临时凭证
-func (p *AWSProvider) assumeRole(roleARN string) (*types.Credentials, error) {
+func (p *AWSProvider) assumeRole(roleARN string) (*stsTypes.Credentials, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -1768,7 +1946,7 @@ func (p *AWSProvider) assumeRole(roleARN string) (*types.Credentials, error) {
 }
 
 // buildFederationURL 构建联邦登录URL
-func (p *AWSProvider) buildFederationURL(creds *types.Credentials) (string, error) {
+func (p *AWSProvider) buildFederationURL(creds *stsTypes.Credentials) (string, error) {
 	// 构建凭证JSON
 	credsJSON, err := json.Marshal(map[string]string{
 		"sessionId":    *creds.AccessKeyId,

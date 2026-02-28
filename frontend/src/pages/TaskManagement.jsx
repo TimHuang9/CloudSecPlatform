@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { fetchTasks, createTask, fetchTaskDetails, fetchTaskResults, clearError, clearCurrentTask } from '../store/taskSlice'
+import { fetchTasks, createTask, fetchTaskDetails, fetchTaskResults, deleteTask, deleteAllTasks, clearError, clearCurrentTask } from '../store/taskSlice'
 import { Typography, Card, Button, Table, Modal, Form, Select, message, Alert, Tabs, Descriptions, List, Badge } from 'antd'
 import { PlusOutlined, PlayCircleOutlined, StopOutlined, DeleteOutlined, AppstoreOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
@@ -186,7 +186,31 @@ const TaskManagement = () => {
   }
 
   const handleDeleteTask = (id) => {
-    message.success(`删除任务 ${id} 成功`)
+    // 调用API删除任务
+    dispatch(deleteTask(id))
+      .unwrap()
+      .then(() => {
+        message.success(`删除任务 ${id} 成功`)
+        // 重新获取任务列表
+        dispatch(fetchTasks())
+      })
+      .catch((error) => {
+        message.error(`删除任务失败: ${error}`)
+      })
+  }
+
+  const handleDeleteAllTasks = () => {
+    // 调用API删除所有任务
+    dispatch(deleteAllTasks())
+      .unwrap()
+      .then(() => {
+        message.success('删除所有任务成功')
+        // 重新获取任务列表
+        dispatch(fetchTasks())
+      })
+      .catch((error) => {
+        message.error(`删除所有任务失败: ${error}`)
+      })
   }
 
   const handleSubmit = (values) => {
@@ -207,13 +231,23 @@ const TaskManagement = () => {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <Title level={2}>任务管理</Title>
-        <Button 
-          type="primary" 
-          icon={<PlusOutlined />}
-          onClick={handleAddTask}
-        >
-          创建任务
-        </Button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Button 
+            type="danger" 
+            icon={<DeleteOutlined />}
+            onClick={handleDeleteAllTasks}
+            disabled={tasks.length === 0}
+          >
+            删除所有任务
+          </Button>
+          <Button 
+            type="primary" 
+            icon={<PlusOutlined />}
+            onClick={handleAddTask}
+          >
+            创建任务
+          </Button>
+        </div>
       </div>
       
       {error && (
@@ -230,10 +264,11 @@ const TaskManagement = () => {
       <Card>
         <Table 
           columns={columns} 
-          dataSource={tasks.length > 0 ? tasks : mockTasks} 
+          dataSource={tasks.length > 0 ? tasks : []} 
           rowKey="id"
           pagination={{ pageSize: 10 }}
           loading={loading}
+          locale={{ emptyText: '暂无任务' }}
         />
       </Card>
       

@@ -190,7 +190,7 @@ function App() {
                     fontWeight: '600',
                     fontSize: '18px'
                   }}>
-                    云红队平台
+                    云安全评估平台
                   </Title>
                 </div>
               </div>

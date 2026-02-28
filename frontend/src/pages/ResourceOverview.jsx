@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
+import { createTask } from '../store/taskSlice'
 import { Typography, Card, Select, Table, Tabs, Spin, message, Alert, Button, Modal, List, Badge } from 'antd'
 import { CloudOutlined, KeyOutlined, DatabaseOutlined, AppstoreOutlined, UploadOutlined, UserOutlined, SearchOutlined, DownloadOutlined, DownOutlined, RightOutlined, FolderOpenOutlined } from '@ant-design/icons'
 import axios from 'axios'
@@ -61,6 +62,7 @@ const ResourceOverview = () => {
   const [commandModalVisible, setCommandModalVisible] = useState(false)
   const [selectedInstanceId, setSelectedInstanceId] = useState('')
   const [command, setCommand] = useState('')
+  const [commandTasks, setCommandTasks] = useState([])
 
   // 处理EC2命令执行
   const handleExecuteCommand = (instanceId) => {
@@ -76,6 +78,21 @@ const ResourceOverview = () => {
       return
     }
 
+    // 创建命令执行任务
+    const taskId = Date.now() + Math.random()
+    const newTask = {
+      id: taskId,
+      name: `EC2命令执行 - ${selectedInstanceId}`,
+      taskType: 'operate',
+      status: 'running',
+      instanceId: selectedInstanceId,
+      command: command,
+      startTime: new Date().toISOString()
+    }
+
+    // 添加到命令任务列表
+    setCommandTasks(prev => [...prev, newTask])
+
     setLoading(true)
     try {
       // 调用后端API执行命令
@@ -89,16 +106,55 @@ const ResourceOverview = () => {
         }
       })
 
-      if (response.data && response.data.success) {
-        message.success('命令执行成功')
-        // 刷新资源列表，获取最新状态
-        fetchResources(selectedCredential)
+      if (response.data) {
+        if (response.data.message) {
+          message.success(response.data.message)
+        } else {
+          message.success('命令执行成功')
+        }
+        // 更新任务状态为待处理（异步执行）
+        setCommandTasks(prev => prev.map(task => 
+          task.id === taskId ? { 
+            ...task, 
+            status: response.data.status || 'pending', 
+            commandId: response.data.commandId,
+            note: response.data.note || response.data.result?.note,
+            endTime: new Date().toISOString()
+          } : task
+        ))
+        
+        // 创建全局任务记录
+        dispatch(createTask({
+          credentialId: selectedCredential.id,
+          taskType: 'operate',
+          parameters: JSON.stringify({
+            resource_type: 'ec2',
+            action: 'execute_command',
+            resource_id: selectedInstanceId,
+            params: { command: command }
+          }),
+          name: `EC2命令执行 - ${selectedInstanceId}`
+        }))
       } else {
-        message.error('命令执行失败: ' + (response.data?.message || '未知错误'))
+        message.error('命令执行失败: 未知错误')
+        // 更新任务状态为失败
+        setCommandTasks(prev => prev.map(task => 
+          task.id === taskId ? { ...task, status: 'failed', endTime: new Date().toISOString() } : task
+        ))
       }
     } catch (error) {
       console.error('命令执行失败:', error)
-      message.error('命令执行失败: ' + (error.response?.data?.error || '未知错误'))
+      const errorMessage = error.response?.data?.error || error.message || '未知错误'
+      message.error('命令执行失败: ' + errorMessage)
+      // 更新任务状态为失败
+      setCommandTasks(prev => prev.map(task => 
+        task.id === taskId ? { 
+          ...task, 
+          status: 'failed', 
+          endTime: new Date().toISOString(),
+          error: errorMessage
+        } : task
+      ))
     } finally {
       setLoading(false)
       setCommandModalVisible(false)
@@ -1066,6 +1122,55 @@ const ResourceOverview = () => {
         </Card>
       )}
 
+      {/* 命令执行任务列表 */}
+      {commandTasks.length > 0 && (
+        <Card style={{ marginTop: 24 }}>
+          <Title level={4}>命令执行任务</Title>
+          <div>
+            {commandTasks.map(task => (
+              <div key={task.id} style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <span>
+                    {task.name}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <Badge 
+                      status={task.status === 'success' ? 'success' : task.status === 'running' ? 'processing' : 'error'}
+                      text={task.status === 'success' ? '成功' : task.status === 'running' ? '执行中' : '失败'}
+                      style={{ marginRight: 8 }}
+                    />
+                  </div>
+                </div>
+                <div style={{ marginBottom: 8, padding: '8px 12px', backgroundColor: '#e6f7ff', borderRadius: 4, border: '1px solid #91d5ff' }}>
+                  <div style={{ marginBottom: 4 }}>
+                    <Text strong>实例 ID: {task.instanceId}</Text>
+                  </div>
+                  <div style={{ marginBottom: 4 }}>
+                    <Text strong>命令: {task.command}</Text>
+                  </div>
+                  {task.commandId && (
+                    <div style={{ marginBottom: 4 }}>
+                      <Text strong>命令 ID: {task.commandId}</Text>
+                    </div>
+                  )}
+                  {task.note && (
+                    <div>
+                      <Text type="secondary">{task.note}</Text>
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Text type="secondary">开始时间: {new Date(task.startTime).toLocaleString()}</Text>
+                  {task.endTime && (
+                    <Text type="secondary">结束时间: {new Date(task.endTime).toLocaleString()}</Text>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* 命令执行模态框 */}
       <Modal
         title="执行命令"
@@ -1075,6 +1180,13 @@ const ResourceOverview = () => {
         okText="执行"
         cancelText="取消"
         confirmLoading={loading}
+        width={600}
+        style={{
+          top: 20
+        }}
+        bodyStyle={{
+          padding: 24
+        }}
       >
         <div style={{ marginBottom: 16 }}>
           <Text strong>EC2 实例 ID: {selectedInstanceId}</Text>
@@ -1084,12 +1196,13 @@ const ResourceOverview = () => {
           <textarea
             style={{
               width: '100%',
-              height: 120,
+              height: 150,
               marginTop: 8,
               padding: 12,
               border: '1px solid #d9d9d9',
               borderRadius: 4,
-              resize: 'vertical'
+              resize: 'vertical',
+              fontFamily: 'monospace'
             }}
             value={command}
             onChange={(e) => setCommand(e.target.value)}

@@ -66,6 +66,8 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		authGroup.POST("/tasks", createTaskHandler(db, redisClient))
 		authGroup.GET("/tasks/:id", getTaskHandler(db))
 		authGroup.GET("/tasks/:id/results", getTaskResultsHandler(db))
+		authGroup.DELETE("/tasks/:id", deleteTaskHandler(db))
+		authGroup.DELETE("/tasks", deleteAllTasksHandler(db))
 
 		// 云平台操作
 		authGroup.POST("/cloud/enumerate", enumerateResourcesHandler(db))
@@ -570,6 +572,99 @@ func getTaskResultsHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+func deleteTaskHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		id := c.Param("id")
+		var task database.Task
+		if result := db.Where("id = ? AND user_id = ?", id, userID).First(&task); result.Error != nil {
+			c.JSON(404, gin.H{"error": "Task not found"})
+			return
+		}
+
+		// 开始事务
+		tx := db.Begin()
+
+		// 删除任务结果
+		if err := tx.Where("task_id = ?", id).Delete(&database.TaskResult{}).Error; err != nil {
+			tx.Rollback()
+			c.JSON(500, gin.H{"error": "Failed to delete task results"})
+			return
+		}
+
+		// 删除任务
+		if err := tx.Delete(&task).Error; err != nil {
+			tx.Rollback()
+			c.JSON(500, gin.H{"error": "Failed to delete task"})
+			return
+		}
+
+		// 提交事务
+		if err := tx.Commit().Error; err != nil {
+			c.JSON(500, gin.H{"error": "Failed to commit transaction"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "Task deleted successfully"})
+	}
+}
+
+func deleteAllTasksHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		// 开始事务
+		tx := db.Begin()
+
+		// 查找用户的所有任务
+		var tasks []database.Task
+		if result := tx.Where("user_id = ?", userID).Find(&tasks); result.Error != nil {
+			tx.Rollback()
+			c.JSON(500, gin.H{"error": "Failed to fetch tasks"})
+			return
+		}
+
+		// 收集所有任务ID
+		var taskIDs []uint
+		for _, task := range tasks {
+			taskIDs = append(taskIDs, task.ID)
+		}
+
+		// 删除所有任务结果
+		if len(taskIDs) > 0 {
+			if err := tx.Where("task_id IN ?", taskIDs).Delete(&database.TaskResult{}).Error; err != nil {
+				tx.Rollback()
+				c.JSON(500, gin.H{"error": "Failed to delete task results"})
+				return
+			}
+
+			// 删除所有任务
+			if err := tx.Where("user_id = ?", userID).Delete(&database.Task{}).Error; err != nil {
+				tx.Rollback()
+				c.JSON(500, gin.H{"error": "Failed to delete tasks"})
+				return
+			}
+		}
+
+		// 提交事务
+		if err := tx.Commit().Error; err != nil {
+			c.JSON(500, gin.H{"error": "Failed to commit transaction"})
+			return
+		}
+
+		c.JSON(200, gin.H{"message": "All tasks deleted successfully"})
+	}
+}
+
 func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("userID")
@@ -750,6 +845,59 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 为EC2命令执行创建任务记录
+		if input.ResourceType == "ec2" && input.Action == "execute_command" {
+			// 将结果保存到数据库
+			// 创建任务记录
+			parameters, _ := json.Marshal(map[string]interface{}{
+				"resource_type": input.ResourceType,
+				"action":        input.Action,
+				"resource_id":   input.ResourceID,
+				"params":        input.Params,
+			})
+
+			task := database.Task{
+				UserID:       userID.(uint),
+				CredentialID: input.CredentialID,
+				TaskType:     "operate",
+				Status:       "completed",
+				Parameters:   string(parameters),
+				StartTime:    time.Now().Format(time.RFC3339),
+				EndTime:      time.Now().Format(time.RFC3339),
+			}
+
+			if err := db.Create(&task).Error; err != nil {
+				// 记录错误但不影响返回结果
+				fmt.Printf("Failed to create task: %v\n", err)
+			}
+
+			// 创建任务结果记录
+			resultJSON, _ := json.Marshal(result)
+			taskResult := database.TaskResult{
+				TaskID:    task.ID,
+				Result:    string(resultJSON),
+				Error:     "",
+				Timestamp: time.Now().Format(time.RFC3339),
+			}
+
+			if err := db.Create(&taskResult).Error; err != nil {
+				// 记录错误但不影响返回结果
+				fmt.Printf("Failed to create task result: %v\n", err)
+			}
+
+			// 添加任务ID到响应
+			c.JSON(200, gin.H{
+				"message":       "Resource operation completed",
+				"credential":    credential.Name,
+				"resource_type": input.ResourceType,
+				"action":        input.Action,
+				"resource_id":   input.ResourceID,
+				"result":        result,
+				"task_id":       task.ID,
+			})
+			return
+		}
+
 		c.JSON(200, gin.H{
 			"message":       "Resource operation completed",
 			"credential":    credential.Name,
@@ -835,21 +983,42 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 		// 查找最新的枚举任务
 		var task database.Task
 		if result := db.Where("user_id = ? AND credential_id = ? AND task_type = ? AND status = ?", userID, input.CredentialID, "enumerate", "completed").Order("end_time DESC").First(&task); result.Error != nil {
-			c.JSON(404, gin.H{"error": "No enumeration task found"})
+			// 找不到枚举任务，返回空的资源数据
+			c.JSON(200, gin.H{
+				"message":    "No enumeration task found",
+				"credential": credential.Name,
+				"result":     map[string]interface{}{},
+				"task_id":    0,
+				"timestamp":  "",
+			})
 			return
 		}
 
 		// 查找任务结果
 		var taskResult database.TaskResult
 		if result := db.Where("task_id = ?", task.ID).First(&taskResult); result.Error != nil {
-			c.JSON(404, gin.H{"error": "Task result not found"})
+			// 找不到任务结果，返回空的资源数据
+			c.JSON(200, gin.H{
+				"message":    "Task result not found",
+				"credential": credential.Name,
+				"result":     map[string]interface{}{},
+				"task_id":    task.ID,
+				"timestamp":  task.EndTime,
+			})
 			return
 		}
 
 		// 解析结果JSON
 		var result map[string]interface{}
 		if err := json.Unmarshal([]byte(taskResult.Result), &result); err != nil {
-			c.JSON(500, gin.H{"error": "Failed to parse task result"})
+			// 解析失败，返回空的资源数据
+			c.JSON(200, gin.H{
+				"message":    "Failed to parse task result",
+				"credential": credential.Name,
+				"result":     map[string]interface{}{},
+				"task_id":    task.ID,
+				"timestamp":  task.EndTime,
+			})
 			return
 		}
 

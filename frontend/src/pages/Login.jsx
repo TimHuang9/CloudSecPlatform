@@ -94,7 +94,7 @@ const Login = () => {
             <ThunderboltOutlined style={{ fontSize: 40, color: '#ffffff' }} />
           </div>
           
-          <Title level={3} style={{ color: '#1a2980', marginBottom: 8, fontWeight: '600' }}>云红队平台</Title>
+          <Title level={3} style={{ color: '#1a2980', marginBottom: 8, fontWeight: '600' }}>云安全评估平台</Title>
           <Text style={{ color: '#666', fontSize: '16px' }}>专业云安全管理平台</Text>
         </div>
         

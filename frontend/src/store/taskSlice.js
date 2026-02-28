@@ -70,6 +70,32 @@ export const fetchTaskResults = createAsyncThunk(
   }
 )
 
+// 异步删除任务
+export const deleteTask = createAsyncThunk(
+  'task/deleteTask',
+  async (id, { rejectWithValue }) => {
+    try {
+      const response = await api.delete(`/tasks/${id}`)
+      return id
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || '删除任务失败')
+    }
+  }
+)
+
+// 异步删除所有任务
+export const deleteAllTasks = createAsyncThunk(
+  'task/deleteAllTasks',
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await api.delete('/tasks')
+      return true
+    } catch (error) {
+      return rejectWithValue(error.response?.data?.error || '删除所有任务失败')
+    }
+  }
+)
+
 const taskSlice = createSlice({
   name: 'task',
   initialState: {
@@ -145,6 +171,36 @@ const taskSlice = createSlice({
         state.taskResults = action.payload
       })
       .addCase(fetchTaskResults.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
+      })
+    
+    // 删除任务
+    builder
+      .addCase(deleteTask.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(deleteTask.fulfilled, (state, action) => {
+        state.loading = false
+        state.tasks = state.tasks.filter(task => task.id !== action.payload)
+      })
+      .addCase(deleteTask.rejected, (state, action) => {
+        state.loading = false
+        state.error = action.payload
+      })
+    
+    // 删除所有任务
+    builder
+      .addCase(deleteAllTasks.pending, (state) => {
+        state.loading = true
+        state.error = null
+      })
+      .addCase(deleteAllTasks.fulfilled, (state) => {
+        state.loading = false
+        state.tasks = []
+      })
+      .addCase(deleteAllTasks.rejected, (state, action) => {
         state.loading = false
         state.error = action.payload
       })
