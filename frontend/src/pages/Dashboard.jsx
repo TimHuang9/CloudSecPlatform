@@ -267,32 +267,7 @@ const Dashboard = () => {
           </Card>
         </Col>
         
-        <Col span={12}>
-          <Card title="系统状态" style={{ marginBottom: 24 }}>
-            <List
-              itemLayout="horizontal"
-              dataSource={[
-                { name: 'CPU 使用率', value: '35%' },
-                { name: '内存使用率', value: '60%' },
-                { name: '磁盘使用率', value: '45%' },
-                { name: '网络带宽', value: '1.2 GB/s' },
-                { name: '活跃连接', value: '128' }
-              ]}
-              renderItem={item => (
-                <List.Item>
-                  <List.Item.Meta
-                    title={
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{item.name}</span>
-                        <Text strong>{item.value}</Text>
-                      </div>
-                    }
-                  />
-                </List.Item>
-              )}
-            />
-          </Card>
-        </Col>
+
       </Row>
     </div>
   )
