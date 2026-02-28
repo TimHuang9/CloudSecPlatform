@@ -1456,12 +1456,19 @@ func (p *AWSProvider) enumerateEC2Instances() ([]interface{}, error) {
 				privateIp = *instance.PrivateIpAddress
 			}
 
+			// 提取VPC ID
+			var vpcId string
+			if instance.VpcId != nil {
+				vpcId = *instance.VpcId
+			}
+
 			instances = append(instances, map[string]interface{}{
 				"instanceId":   *instance.InstanceId,
 				"instanceType": string(instance.InstanceType),
 				"state":        string(instance.State.Name),
 				"publicIp":     publicIp,
 				"privateIp":    privateIp,
+				"vpcId":        vpcId,
 				"tags":         tags,
 			})
 		}

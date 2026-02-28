@@ -4,7 +4,6 @@ import { fetchCredentials } from '../store/credentialSlice'
 import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin, Badge } from 'antd'
 import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, FolderOpenOutlined, UserOutlined, BuildOutlined } from '@ant-design/icons'
 import axios from 'axios'
-import { Graphviz } from 'graphviz-react'
 
 // 配置 axios 基础 URL
 const api = axios.create({
@@ -50,8 +49,6 @@ const AKSKUtilization = () => {
   const [enumerationProgresses, setEnumerationProgresses] = useState({})
   const [enumerationStatus, setEnumerationStatus] = useState('')
   const [userInfo, setUserInfo] = useState({})
-  const [topologyData, setTopologyData] = useState(null)
-  const [topologyLoading, setTopologyLoading] = useState(false)
   
   // 资源组管理
   const [resourceGroups, setResourceGroups] = useState(() => {
@@ -1786,90 +1783,7 @@ const AKSKUtilization = () => {
     message.success(`已选择资源组: ${group.name}`)
   }
 
-  // 生成拓扑测绘
-  const handleGenerateTopology = async () => {
-    if (!selectedCredential) {
-      message.warning('请选择凭证')
-      return
-    }
 
-    setTopologyLoading(true)
-    try {
-      // 检查是否有资源数据
-      if (resources.length === 0) {
-        message.warning('请先枚举资源，然后再生成拓扑图')
-        setTopologyLoading(false)
-        return
-      }
-
-      // 生成拓扑数据
-      const topology = {
-        nodes: [],
-        edges: []
-      }
-
-      // 为VPC和EC2资源创建节点
-      const resourceNodes = {}
-      
-      // 添加VPC节点
-      const vpcNodes = {}
-      resources.filter(r => r.type === 'vpc').forEach(vpc => {
-        const nodeId = `vpc-${vpc.id}`
-        resourceNodes[nodeId] = true
-        vpcNodes[vpc.id] = nodeId
-        topology.nodes.push({
-          id: nodeId,
-          label: `VPC: ${vpc.name}`,
-          shape: 'box',
-          style: 'fillcolor:#f9f0ff;stroke:#722ed1;stroke-width:2px'
-        })
-      })
-
-      // 添加EC2实例节点
-      resources.filter(r => r.type === 'ec2').forEach(instance => {
-        const nodeId = `ec2-${instance.id}`
-        resourceNodes[nodeId] = true
-        topology.nodes.push({
-          id: nodeId,
-          label: `EC2: ${instance.name}`,
-          shape: 'box',
-          style: 'fillcolor:#e6f7ff;stroke:#1890ff;stroke-width:2px'
-        })
-      })
-
-      // 生成Graphviz DOT语言
-      let dot = 'digraph G {\n'
-      dot += '  rankdir=LR;\n'
-      dot += '  node [fontname="Arial", fontsize=12];\n'
-      dot += '  edge [fontname="Arial", fontsize=10, color="#999"];\n\n'
-
-      // 添加节点
-      topology.nodes.forEach(node => {
-        dot += `  "${node.id}" [label="${node.label}", shape=${node.shape}, style="${node.style}"];\n`
-      })
-
-      dot += '\n'
-
-      // 添加边（这里简单地将所有资源连接到中心节点）
-      const centerNode = 'aws_account'
-      dot += `  "${centerNode}" [label="AWS Account: ${selectedCredential.name}", shape=ellipse, style="fillcolor:#f0f0f0;stroke:#333;stroke-width:2px", fontsize=14, fontweight=bold];\n\n`
-
-      topology.nodes.forEach(node => {
-        dot += `  "${centerNode}" -> "${node.id}";\n`
-      })
-
-      dot += '}'
-
-      setTopologyData(dot)
-      message.success('拓扑测绘生成成功')
-    } catch (error) {
-      console.error('生成拓扑测绘失败:', error)
-      message.error('生成拓扑测绘失败: ' + (error.response?.data?.error || '未知错误'))
-      setTopologyData(null)
-    } finally {
-      setTopologyLoading(false)
-    }
-  }
 
   // 自定义节点组件
   const CustomNode = ({ data }) => {
@@ -2593,35 +2507,7 @@ const AKSKUtilization = () => {
               </div>
             </TabPane>
 
-            {/* 拓扑测绘 */}
-            <TabPane tab="拓扑测绘" key="topology">
-              <div style={{ marginBottom: 16 }}>
-                <Button 
-                  type="primary" 
-                  icon={<BuildOutlined />}
-                  onClick={handleGenerateTopology}
-                  loading={topologyLoading}
-                  style={{ marginBottom: 16 }}
-                >
-                  生成拓扑图
-                </Button>
-                
-                {topologyData ? (
-                  <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
-                    <h3>拓扑测绘结果</h3>
-                    <div style={{ marginTop: 16, overflow: 'auto' }}>
-                      <div style={{ minWidth: '800px', minHeight: '500px' }}>
-                        <Graphviz dot={topologyData} />
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                    <Text type="secondary">请点击"生成拓扑图"按钮生成资源拓扑</Text>
-                  </div>
-                )}
-              </div>
-            </TabPane>
+
 
 
           </Tabs>

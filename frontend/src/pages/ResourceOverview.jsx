@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
 import { createTask } from '../store/taskSlice'
 import { Typography, Card, Select, Table, Tabs, Spin, message, Alert, Button, Modal, List, Badge } from 'antd'
-import { CloudOutlined, KeyOutlined, DatabaseOutlined, AppstoreOutlined, UploadOutlined, UserOutlined, SearchOutlined, DownloadOutlined, DownOutlined, RightOutlined, FolderOpenOutlined } from '@ant-design/icons'
+import { CloudOutlined, KeyOutlined, DatabaseOutlined, AppstoreOutlined, UploadOutlined, UserOutlined, SearchOutlined, DownloadOutlined, DownOutlined, RightOutlined, FolderOpenOutlined, BuildOutlined } from '@ant-design/icons'
+import ReactFlow, { Controls, Background, MiniMap } from 'reactflow'
+import 'reactflow/dist/style.css'
 import axios from 'axios'
 
 // 配置 axios 基础 URL
@@ -40,6 +42,13 @@ const ResourceOverview = () => {
   const [selectedRegion, setSelectedRegion] = useState('all')
   const [downloadTasks, setDownloadTasks] = useState([])
   const [selectedFiles, setSelectedFiles] = useState({})
+  const [topologyData, setTopologyData] = useState(null)
+  const [topologyLoading, setTopologyLoading] = useState(false)
+  const [scale, setScale] = useState(1)
+  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  const [startDrag, setStartDrag] = useState({ x: 0, y: 0 })
+  const topologyRef = useRef(null)
 
   useEffect(() => {
     dispatch(fetchCredentials())
@@ -221,6 +230,7 @@ const ResourceOverview = () => {
               type: 'ec2',
               status: instance.state,
               region: instance.region || credential.region,
+              vpcId: instance.vpcId,
               tags: instance.tags
             })
           })
@@ -751,6 +761,195 @@ const ResourceOverview = () => {
       console.error('遍历存储桶失败:', error)
       message.error('遍历存储桶失败: ' + (error.response?.data?.error || '未知错误'))
     }
+  }
+
+  // 生成拓扑测绘
+  const handleGenerateTopology = async () => {
+    if (!selectedCredential) {
+      message.warning('请选择凭证')
+      return
+    }
+
+    setTopologyLoading(true)
+    try {
+      // 检查是否有资源数据
+      if (resources.length === 0) {
+        message.warning('请先获取资源，然后再生成拓扑图')
+        setTopologyLoading(false)
+        return
+      }
+
+      // 生成React Flow节点和边
+      const nodes = []
+      const edges = []
+
+      // 添加中心节点（云账户）
+      const centerNodeId = 'cloud_account'
+      nodes.push({
+        id: centerNodeId,
+        position: { x: 400, y: 50 },
+        data: { label: `${selectedCredential.cloudProvider} Account: ${selectedCredential.name}` },
+        style: {
+          backgroundColor: '#f0f0f0',
+          border: '2px solid #333',
+          borderRadius: '8px',
+          padding: '10px',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        },
+        type: 'default'
+      })
+
+      // 为VPC和EC2资源创建节点
+      const vpcNodes = {}
+      let vpcX = 100
+      const vpcY = 200
+      const ec2YOffset = 150
+
+      // 添加VPC节点
+      resources.filter(r => r.type === 'vpc').forEach((vpc, index) => {
+        const vpcNodeId = `vpc_${vpc.id.replace(/-/g, '_')}`
+        vpcNodes[vpc.id] = vpcNodeId
+        
+        // 计算VPC节点位置
+        const vpcPositionX = vpcX + (index * 250)
+        
+        nodes.push({
+          id: vpcNodeId,
+          position: { x: vpcPositionX, y: vpcY },
+          data: { label: `VPC: ${vpc.name}` },
+          style: {
+            backgroundColor: '#f9f0ff',
+            border: '2px solid #722ed1',
+            borderRadius: '8px',
+            padding: '10px',
+            fontSize: '12px'
+          },
+          type: 'default'
+        })
+
+        // 连接VPC到中心节点
+        edges.push({
+          id: `edge_${centerNodeId}_${vpcNodeId}`,
+          source: centerNodeId,
+          target: vpcNodeId,
+          style: { stroke: '#999' }
+        })
+
+        // 为VPC内的EC2实例创建节点
+        const ec2Instances = resources.filter(r => r.type === 'ec2' && r.vpcId === vpc.id)
+        ec2Instances.forEach((instance, ec2Index) => {
+          const ec2NodeId = `ec2_${instance.id.replace(/-/g, '_')}`
+          
+          // 计算EC2节点位置
+          const ec2PositionX = vpcPositionX - 75 + (ec2Index * 150)
+          
+          nodes.push({
+            id: ec2NodeId,
+            position: { x: ec2PositionX, y: vpcY + ec2YOffset },
+            data: { label: `EC2: ${instance.name}` },
+            style: {
+              backgroundColor: '#e6f7ff',
+              border: '2px solid #1890ff',
+              borderRadius: '8px',
+              padding: '10px',
+              fontSize: '12px'
+            },
+            type: 'default'
+          })
+
+          // 连接EC2到VPC
+          edges.push({
+            id: `edge_${vpcNodeId}_${ec2NodeId}`,
+            source: vpcNodeId,
+            target: ec2NodeId,
+            style: { stroke: '#999' }
+          })
+        })
+      })
+
+      // 为不在任何VPC中的EC2实例创建节点并连接到中心节点
+      const standaloneEC2s = resources.filter(r => r.type === 'ec2' && !r.vpcId)
+      standaloneEC2s.forEach((instance, index) => {
+        const ec2NodeId = `ec2_${instance.id.replace(/-/g, '_')}`
+        
+        // 计算EC2节点位置
+        const ec2PositionX = 100 + (index * 200)
+        
+        nodes.push({
+          id: ec2NodeId,
+          position: { x: ec2PositionX, y: vpcY + ec2YOffset },
+          data: { label: `EC2: ${instance.name}` },
+          style: {
+            backgroundColor: '#e6f7ff',
+            border: '2px solid #1890ff',
+            borderRadius: '8px',
+            padding: '10px',
+            fontSize: '12px'
+          },
+          type: 'default'
+        })
+
+        // 连接EC2到中心节点
+        edges.push({
+          id: `edge_${centerNodeId}_${ec2NodeId}`,
+          source: centerNodeId,
+          target: ec2NodeId,
+          style: { stroke: '#999' }
+        })
+      })
+
+      // 设置拓扑数据
+      setTopologyData({ nodes, edges })
+      message.success('拓扑测绘生成成功')
+    } catch (error) {
+      console.error('生成拓扑测绘失败:', error)
+      message.error('生成拓扑测绘失败: ' + (error.response?.data?.error || '未知错误'))
+      setTopologyData(null)
+    } finally {
+      setTopologyLoading(false)
+    }
+  }
+
+  // 缩放和拖动处理函数
+  const handleZoomIn = () => {
+    setScale(prev => Math.min(prev * 1.2, 5))
+  }
+
+  const handleZoomOut = () => {
+    setScale(prev => Math.max(prev / 1.2, 0.1))
+  }
+
+  const handleReset = () => {
+    setScale(1)
+    setPosition({ x: 0, y: 0 })
+  }
+
+  const handleMouseDown = (e) => {
+    setIsDragging(true)
+    setStartDrag({
+      x: e.clientX - position.x,
+      y: e.clientY - position.y
+    })
+  }
+
+  const handleMouseMove = (e) => {
+    if (isDragging) {
+      setPosition({
+        x: e.clientX - startDrag.x,
+        y: e.clientY - startDrag.y
+      })
+    }
+  }
+
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  const handleWheel = (e) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setScale(prev => Math.max(0.1, Math.min(5, prev * delta)))
   }
 
 
@@ -1376,6 +1575,51 @@ const ResourceOverview = () => {
                 </div>
               </div>
             ))}
+          </div>
+        </Card>
+      )}
+
+      {/* 拓扑测绘 */}
+      {selectedCredential && (
+        <Card style={{ marginTop: 24 }}>
+          <Title level={4}>拓扑测绘</Title>
+          <div style={{ marginBottom: 16 }}>
+            <Button 
+              type="primary" 
+              icon={<BuildOutlined />}
+              onClick={handleGenerateTopology}
+              loading={topologyLoading}
+              style={{ marginBottom: 16 }}
+            >
+              生成拓扑图
+            </Button>
+            
+            {topologyData ? (
+              <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
+                <h3>拓扑测绘结果</h3>
+                <div style={{ marginTop: 16, width: '100%' }}>
+                  <div style={{ width: '100%', height: '600px', border: '1px solid #e8e8e8', borderRadius: '4px' }}>
+                    <ReactFlow
+                      nodes={topologyData.nodes}
+                      edges={topologyData.edges}
+                      defaultZoom={1}
+                      defaultPosition={{ x: 0, y: 0 }}
+                      minZoom={0.1}
+                      maxZoom={5}
+                      fitView
+                    >
+                      <Controls />
+                      <Background variant="dots" gap={12} size={1} />
+                      <MiniMap />
+                    </ReactFlow>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Text type="secondary">请点击"生成拓扑图"按钮生成资源拓扑</Text>
+              </div>
+            )}
           </div>
         </Card>
       )}
