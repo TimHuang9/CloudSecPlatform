@@ -64,3 +64,4 @@ backend/cmd/server/redteamsec.db
 backend/cmd/server/__debug_bin517054542
 /backend/cmd/server
 backend/server
+backend/redteamsec.db
