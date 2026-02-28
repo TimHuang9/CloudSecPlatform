@@ -94,6 +94,8 @@ const ResourceOverview = () => {
     setCommandTasks(prev => [...prev, newTask])
 
     setLoading(true)
+    setCommandModalVisible(false) // 立即关闭弹窗
+    
     try {
       // 查找实例的区域信息
       const instance = resources.find(r => r.id === selectedInstanceId && r.type === 'ec2')
@@ -132,6 +134,7 @@ const ResourceOverview = () => {
         ))
         
         // 创建全局任务记录
+        const executionStatus = response.data.status || response.data.result?.status || 'success';
         dispatch(createTask({
           credentialId: selectedCredential.id,
           taskType: 'operate',
@@ -142,11 +145,12 @@ const ResourceOverview = () => {
             params: { command: command }
           }),
           name: `EC2命令执行 - ${selectedInstanceId}`,
-          status: response.data.status || 'success',
+          status: executionStatus,
           result: JSON.stringify({
-            stdout: response.data.stdout,
-            stderr: response.data.stderr,
-            commandId: response.data.commandId
+            stdout: response.data.stdout || response.data.result?.stdout,
+            stderr: response.data.stderr || response.data.result?.stderr,
+            commandId: response.data.commandId || response.data.result?.commandId,
+            executionSteps: response.data.executionSteps || response.data.result?.executionSteps
           })
         }))
       } else {
@@ -186,7 +190,6 @@ const ResourceOverview = () => {
       }))
     } finally {
       setLoading(false)
-      setCommandModalVisible(false)
     }
   }
 

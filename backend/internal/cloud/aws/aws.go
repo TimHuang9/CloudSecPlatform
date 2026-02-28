@@ -1404,18 +1404,36 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			ec2Resp, err := ec2Client.DescribeInstances(ctx, ec2Input)
 			if err != nil {
 				executionSteps = append(executionSteps, fmt.Sprintf("检查实例状态失败: %v", err))
-				return nil, fmt.Errorf("failed to describe instance: %w", err)
+				return map[string]interface{}{
+					"message":         "Failed to check instance status",
+					"instanceId":      resourceID,
+					"status":          "failed",
+					"error":           err.Error(),
+					"executionSteps":  executionSteps,
+				}, nil
 			}
 
 			if len(ec2Resp.Reservations) == 0 || len(ec2Resp.Reservations[0].Instances) == 0 {
 				executionSteps = append(executionSteps, "实例不存在")
-				return nil, fmt.Errorf("instance not found")
+				return map[string]interface{}{
+					"message":         "Instance not found",
+					"instanceId":      resourceID,
+					"status":          "failed",
+					"error":           "Instance not found",
+					"executionSteps":  executionSteps,
+				}, nil
 			}
 
 			instance := ec2Resp.Reservations[0].Instances[0]
 			if instance.State == nil || string(instance.State.Name) != "running" {
 				executionSteps = append(executionSteps, fmt.Sprintf("实例状态不是running，当前状态: %s", string(instance.State.Name)))
-				return nil, fmt.Errorf("instance is not in running state")
+				return map[string]interface{}{
+					"message":         "Instance is not in running state",
+					"instanceId":      resourceID,
+					"status":          "failed",
+					"error":           fmt.Sprintf("Instance is not in running state, current state: %s", string(instance.State.Name)),
+					"executionSteps":  executionSteps,
+				}, nil
 			}
 			executionSteps = append(executionSteps, "实例状态检查通过，状态为running")
 
@@ -1424,7 +1442,13 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 			err = p.checkAndCreateInstanceProfileWithClient(ctx, resourceID, ec2Client, iamClient)
 			if err != nil {
 				executionSteps = append(executionSteps, fmt.Sprintf("检查实例配置文件失败: %v", err))
-				return nil, fmt.Errorf("failed to check or create instance profile: %w", err)
+				return map[string]interface{}{
+					"message":         "Failed to check or create instance profile",
+					"instanceId":      resourceID,
+					"status":          "failed",
+					"error":           err.Error(),
+					"executionSteps":  executionSteps,
+				}, nil
 			}
 			executionSteps = append(executionSteps, "实例配置文件检查完成")
 
@@ -1455,7 +1479,14 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				executionSteps = append(executionSteps, "- 确保实例有互联网连接")
 				executionSteps = append(executionSteps, "- 确保安全组允许SSM流量")
 				executionSteps = append(executionSteps, "- 等待10分钟后再尝试，确保实例配置文件生效")
-				return nil, fmt.Errorf("failed to send command: %v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err)
+				return map[string]interface{}{
+					"message":         "Failed to send command",
+					"instanceId":      resourceID,
+					"command":         command,
+					"status":          "failed",
+					"error":           fmt.Sprintf("%v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err),
+					"executionSteps":  executionSteps,
+				}, nil
 			}
 
 			commandID := *resp.Command.CommandId

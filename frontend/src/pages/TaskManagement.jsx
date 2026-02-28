@@ -364,22 +364,59 @@ const TaskManagement = () => {
                     timestamp: '2024-01-15 14:35:00'
                   }
                 ]}
-                renderItem={item => (
-                  <List.Item>
-                    <List.Item.Meta
-                      title={item.timestamp}
-                      description={
-                        <div>
-                          {item.error ? (
-                            <Text type="danger">错误: {item.error}</Text>
-                          ) : (
-                            <Text>结果: {item.result}</Text>
-                          )}
-                        </div>
-                      }
-                    />
-                  </List.Item>
-                )}
+                renderItem={item => {
+                  // 格式化时间
+                  const formatTime = (timestamp) => {
+                    if (!timestamp) return 'N/A';
+                    try {
+                      return new Date(timestamp).toLocaleString('zh-CN');
+                    } catch (e) {
+                      return timestamp;
+                    }
+                  };
+                  
+                  // 美化JSON显示
+                  const formatJSON = (jsonStr) => {
+                    if (!jsonStr) return '{}';
+                    try {
+                      const obj = JSON.parse(jsonStr);
+                      return JSON.stringify(obj, null, 2);
+                    } catch (e) {
+                      return jsonStr;
+                    }
+                  };
+                  
+                  return (
+                    <List.Item>
+                      <List.Item.Meta
+                        title={formatTime(item.timestamp)}
+                        description={
+                          <div>
+                            {item.error ? (
+                              <Text type="danger">错误: {item.error}</Text>
+                            ) : (
+                              <div>
+                                <Text>结果:</Text>
+                                <div style={{ 
+                                  marginTop: 8, 
+                                  padding: 12, 
+                                  backgroundColor: '#f5f5f5', 
+                                  borderRadius: 4, 
+                                  fontFamily: 'monospace', 
+                                  fontSize: 12, 
+                                  whiteSpace: 'pre-wrap',
+                                  overflowX: 'auto'
+                                }}>
+                                  {formatJSON(item.result)}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
               />
             </TabPane>
           </Tabs>

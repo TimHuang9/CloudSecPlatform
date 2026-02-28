@@ -905,6 +905,20 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 
 	if err != nil {
+		// 检查是否是EC2命令执行错误，如果是，返回result（包含executionSteps）
+		if input.ResourceType == "ec2" && input.Action == "execute_command" && result != nil {
+			c.JSON(200, gin.H{
+				"message":       "Resource operation failed",
+				"credential":    credential.Name,
+				"resource_type": input.ResourceType,
+				"action":        input.Action,
+				"resource_id":   input.ResourceID,
+				"result":        result,
+				"task_id":       taskID,
+				"error":         "Failed to operate resource: " + err.Error(),
+			})
+			return
+		}
 		c.JSON(500, gin.H{"error": "Failed to operate resource: " + err.Error(), "task_id": taskID})
 		return
 	}

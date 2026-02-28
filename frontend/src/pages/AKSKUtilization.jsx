@@ -1218,12 +1218,7 @@ const AKSKUtilization = () => {
     )
   }
 
-  // 处理EC2命令执行
-  const handleExecuteCommand = (instanceId) => {
-    // 这里可以实现命令执行逻辑
-    message.info(`执行命令到 EC2 实例: ${instanceId}`)
-    // 后续可以添加命令输入模态框等
-  }
+
 
   // 资源表格列
   const resourceColumns = [
@@ -1278,29 +1273,6 @@ const AKSKUtilization = () => {
       width: 150,
       fixed: 'left',
       ellipsis: true
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 100,
-      fixed: 'right',
-      render: (_, record) => {
-        console.log('Record data:', record); // 详细调试信息
-        // 检查资源类型，确保EC2实例显示执行命令选项
-        if (record.type === 'ec2') {
-          return (
-            <div>
-              <a href="#" onClick={(e) => {
-                e.preventDefault();
-                handleExecuteCommand(record.id);
-              }} style={{ color: '#1890ff', cursor: 'pointer' }}>
-                执行命令
-              </a>
-            </div>
-          )
-        }
-        return null
-      }
     }
   ]
 
