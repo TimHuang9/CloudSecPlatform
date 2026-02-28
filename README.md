@@ -161,8 +161,5 @@ CloudSecPlatform/
 3. 提交更改 (`git commit -m 'Add some amazing feature'`)
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 开启 Pull Request
-<img width="2998" height="1220" alt="image" src="https://github.com/user-attachments/assets/1ac83cfe-da27-4ee3-94d7-85ff0c291243" />
-<img width="2936" height="1360" alt="image" src="https://github.com/user-attachments/assets/95ed8715-6f66-42d5-9fc9-43159365e965" />
 
-<img width="2986" height="1320" alt="image" src="https://github.com/user-attachments/assets/e466684e-d756-4b99-8aa0-fd115393ef14" />
 
