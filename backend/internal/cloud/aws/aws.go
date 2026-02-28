@@ -1359,40 +1359,82 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				return nil, fmt.Errorf("command is required")
 			}
 
+			// 获取实例区域
+			instanceRegion, ok := params["region"].(string)
+			if !ok || instanceRegion == "" {
+				instanceRegion = p.region
+				if instanceRegion == "" {
+					instanceRegion = "us-east-1"
+				}
+			}
+
+			// 如果实例区域与当前客户端区域不同，创建新的客户端
+			var ec2Client *ec2.Client
+			var iamClient *iam.Client
+			var ssmClient *ssm.Client
+
+			if instanceRegion != p.region {
+				// 创建新的客户端，使用实例的区域
+				regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, instanceRegion)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create AWS provider for instance region: %w", err)
+				}
+				ec2Client = regionProvider.ec2Client
+				iamClient = regionProvider.iamClient
+				ssmClient = regionProvider.ssmClient
+			} else {
+				// 使用当前客户端
+				ec2Client = p.ec2Client
+				iamClient = p.iamClient
+				ssmClient = p.ssmClient
+			}
+
 			// 检查实例状态
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
+			// 执行过程信息
+			executionSteps := []string{}
+
 			// 检查实例状态
+			executionSteps = append(executionSteps, "检查实例状态...")
 			ec2Input := &ec2.DescribeInstancesInput{
 				InstanceIds: []string{resourceID},
 			}
-			ec2Resp, err := p.ec2Client.DescribeInstances(ctx, ec2Input)
+			ec2Resp, err := ec2Client.DescribeInstances(ctx, ec2Input)
 			if err != nil {
+				executionSteps = append(executionSteps, fmt.Sprintf("检查实例状态失败: %v", err))
 				return nil, fmt.Errorf("failed to describe instance: %w", err)
 			}
 
 			if len(ec2Resp.Reservations) == 0 || len(ec2Resp.Reservations[0].Instances) == 0 {
+				executionSteps = append(executionSteps, "实例不存在")
 				return nil, fmt.Errorf("instance not found")
 			}
 
 			instance := ec2Resp.Reservations[0].Instances[0]
 			if instance.State == nil || string(instance.State.Name) != "running" {
+				executionSteps = append(executionSteps, fmt.Sprintf("实例状态不是running，当前状态: %s", string(instance.State.Name)))
 				return nil, fmt.Errorf("instance is not in running state")
 			}
+			executionSteps = append(executionSteps, "实例状态检查通过，状态为running")
 
 			// 检查并创建实例配置文件
-			err = p.checkAndCreateInstanceProfile(ctx, resourceID)
+			executionSteps = append(executionSteps, "检查实例配置文件...")
+			err = p.checkAndCreateInstanceProfileWithClient(ctx, resourceID, ec2Client, iamClient)
 			if err != nil {
+				executionSteps = append(executionSteps, fmt.Sprintf("检查实例配置文件失败: %v", err))
 				return nil, fmt.Errorf("failed to check or create instance profile: %w", err)
 			}
+			executionSteps = append(executionSteps, "实例配置文件检查完成")
 
 			// 创建带有超时的上下文
 			ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 
 			// 调用SSM SendCommand API执行命令
-			resp, err := p.ssmClient.SendCommand(ctx, &ssm.SendCommandInput{
+			executionSteps = append(executionSteps, "执行命令...")
+			resp, err := ssmClient.SendCommand(ctx, &ssm.SendCommandInput{
 				InstanceIds:  []string{resourceID},
 				DocumentName: aws.String("AWS-RunShellScript"),
 				Parameters: map[string][]string{
@@ -1400,18 +1442,84 @@ func (p *AWSProvider) OperateResource(resourceType, action, resourceID string, p
 				},
 			})
 			if err != nil {
+				executionSteps = append(executionSteps, fmt.Sprintf("发送命令失败: %v", err))
+				executionSteps = append(executionSteps, "可能的原因:")
+				executionSteps = append(executionSteps, "1. SSM Agent 未安装或未运行")
+				executionSteps = append(executionSteps, "2. 实例没有互联网连接")
+				executionSteps = append(executionSteps, "3. 实例配置文件尚未生效")
+				executionSteps = append(executionSteps, "4. 安全组没有允许SSM流量")
+				executionSteps = append(executionSteps, "5. 实例状态不是running")
+				executionSteps = append(executionSteps, "建议:")
+				executionSteps = append(executionSteps, "- 确保实例状态为running")
+				executionSteps = append(executionSteps, "- 确保SSM Agent已安装并运行")
+				executionSteps = append(executionSteps, "- 确保实例有互联网连接")
+				executionSteps = append(executionSteps, "- 确保安全组允许SSM流量")
+				executionSteps = append(executionSteps, "- 等待10分钟后再尝试，确保实例配置文件生效")
 				return nil, fmt.Errorf("failed to send command: %v. Possible reasons: 1. SSM Agent not installed/running 2. Instance has no internet connection 3. Instance profile not yet生效 4. Security group not allowing SSM traffic 5. Instance not running", err)
 			}
 
-			// 立即返回，不等待命令执行完成
-			return map[string]interface{}{
-				"message":    "Command sent successfully",
-				"instanceId": resourceID,
-				"commandId":  *resp.Command.CommandId,
-				"command":    command,
-				"status":     "pending",
-				"note":       "Command is being executed asynchronously. Use the command ID to check status later.",
-			}, nil
+			commandID := *resp.Command.CommandId
+			executionSteps = append(executionSteps, fmt.Sprintf("命令已发送，CommandId: %s", commandID))
+			executionSteps = append(executionSteps, "正在等待命令执行结果...")
+
+			// 等待命令执行完成
+			time.Sleep(3 * time.Second)
+
+			// 获取命令执行结果
+			executionSteps = append(executionSteps, "获取命令执行结果...")
+			invocationInput := &ssm.GetCommandInvocationInput{
+				CommandId:  aws.String(commandID),
+				InstanceId: aws.String(resourceID),
+			}
+
+			invocationResp, err := ssmClient.GetCommandInvocation(ctx, invocationInput)
+			if err != nil {
+				executionSteps = append(executionSteps, fmt.Sprintf("获取命令执行结果失败: %v", err))
+				// 如果获取结果失败，返回命令ID和状态
+				return map[string]interface{}{
+					"message":         "Command sent but failed to get result",
+					"instanceId":      resourceID,
+					"commandId":       commandID,
+					"command":         command,
+					"status":          "failed",
+					"error":           err.Error(),
+					"note":            "Failed to get command execution result. Use the command ID to check status later.",
+					"executionSteps":  executionSteps,
+				}, nil
+			}
+
+			executionSteps = append(executionSteps, "命令执行结果:")
+			executionSteps = append(executionSteps, *invocationResp.StandardOutputContent)
+			if invocationResp.StandardErrorContent != nil && *invocationResp.StandardErrorContent != "" {
+				executionSteps = append(executionSteps, "错误输出:")
+				executionSteps = append(executionSteps, *invocationResp.StandardErrorContent)
+			}
+
+			// 构建结果
+			result := map[string]interface{}{
+				"message":         "Command executed successfully",
+				"instanceId":      resourceID,
+				"commandId":       commandID,
+				"command":         command,
+				"status":          string(invocationResp.Status),
+				"stdout":          *invocationResp.StandardOutputContent,
+				"executionSteps":  executionSteps,
+			}
+
+			// 添加错误输出（如果有）
+			if invocationResp.StandardErrorContent != nil && *invocationResp.StandardErrorContent != "" {
+				result["stderr"] = *invocationResp.StandardErrorContent
+			}
+
+			// 添加执行时间信息
+			if invocationResp.ExecutionStartDateTime != nil {
+				result["startTime"] = invocationResp.ExecutionStartDateTime
+			}
+			if invocationResp.ExecutionEndDateTime != nil {
+				result["endTime"] = invocationResp.ExecutionEndDateTime
+			}
+
+			return result, nil
 		}
 	}
 
@@ -1591,12 +1699,17 @@ func (p *AWSProvider) Takeover() (map[string]interface{}, error) {
 
 // checkAndCreateInstanceProfile 检查并创建实例配置文件
 func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanceID string) error {
+	return p.checkAndCreateInstanceProfileWithClient(ctx, instanceID, p.ec2Client, p.iamClient)
+}
+
+// checkAndCreateInstanceProfileWithClient 检查并创建实例配置文件（使用指定的客户端）
+func (p *AWSProvider) checkAndCreateInstanceProfileWithClient(ctx context.Context, instanceID string, ec2Client *ec2.Client, iamClient *iam.Client) error {
 	// 检查实例是否已经有关联的实例配置文件
 	ec2Input := &ec2.DescribeInstancesInput{
 		InstanceIds: []string{instanceID},
 	}
 
-	ec2Resp, err := p.ec2Client.DescribeInstances(ctx, ec2Input)
+	ec2Resp, err := ec2Client.DescribeInstances(ctx, ec2Input)
 	if err != nil {
 		return fmt.Errorf("failed to describe instance: %w", err)
 	}
@@ -1613,7 +1726,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 	// 检查角色是否存在
 	roleExists := false
 	listRolesInput := &iam.ListRolesInput{}
-	listRolesResp, err := p.iamClient.ListRoles(ctx, listRolesInput)
+	listRolesResp, err := iamClient.ListRoles(ctx, listRolesInput)
 	if err == nil {
 		for _, role := range listRolesResp.Roles {
 			if role.RoleName != nil && *role.RoleName == roleName {
@@ -1641,7 +1754,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 			}`),
 		}
 
-		_, err = p.iamClient.CreateRole(ctx, createRoleInput)
+		_, err = iamClient.CreateRole(ctx, createRoleInput)
 		if err != nil {
 			return fmt.Errorf("failed to create role: %w", err)
 		}
@@ -1652,7 +1765,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 			PolicyArn: aws.String("arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"),
 		}
 
-		_, err = p.iamClient.AttachRolePolicy(ctx, attachPolicyInput)
+		_, err = iamClient.AttachRolePolicy(ctx, attachPolicyInput)
 		if err != nil {
 			return fmt.Errorf("failed to attach policy: %w", err)
 		}
@@ -1661,7 +1774,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 	// 检查实例配置文件是否存在
 	profileExists := false
 	listProfilesInput := &iam.ListInstanceProfilesInput{}
-	listProfilesResp, err := p.iamClient.ListInstanceProfiles(ctx, listProfilesInput)
+	listProfilesResp, err := iamClient.ListInstanceProfiles(ctx, listProfilesInput)
 	if err == nil {
 		for _, profile := range listProfilesResp.InstanceProfiles {
 			if profile.InstanceProfileName != nil && *profile.InstanceProfileName == profileName {
@@ -1677,7 +1790,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 			InstanceProfileName: aws.String(profileName),
 		}
 
-		_, err = p.iamClient.CreateInstanceProfile(ctx, createProfileInput)
+		_, err = iamClient.CreateInstanceProfile(ctx, createProfileInput)
 		if err != nil {
 			return fmt.Errorf("failed to create instance profile: %w", err)
 		}
@@ -1688,7 +1801,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 			RoleName:            aws.String(roleName),
 		}
 
-		_, err = p.iamClient.AddRoleToInstanceProfile(ctx, addRoleInput)
+		_, err = iamClient.AddRoleToInstanceProfile(ctx, addRoleInput)
 		if err != nil {
 			return fmt.Errorf("failed to add role to instance profile: %w", err)
 		}
@@ -1706,7 +1819,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 			InstanceProfileName: aws.String(profileName),
 		}
 
-		_, getProfileErr = p.iamClient.GetInstanceProfile(ctx, getProfileInput)
+		_, getProfileErr = iamClient.GetInstanceProfile(ctx, getProfileInput)
 		if getProfileErr == nil {
 			break
 		}
@@ -1728,7 +1841,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfile(ctx context.Context, instanc
 		InstanceId: aws.String(instanceID),
 	}
 
-	_, err = p.ec2Client.AssociateIamInstanceProfile(ctx, associateInput)
+	_, err = ec2Client.AssociateIamInstanceProfile(ctx, associateInput)
 	if err != nil {
 		return fmt.Errorf("failed to associate instance profile: %w", err)
 	}

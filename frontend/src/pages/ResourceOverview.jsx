@@ -95,6 +95,10 @@ const ResourceOverview = () => {
 
     setLoading(true)
     try {
+      // 查找实例的区域信息
+      const instance = resources.find(r => r.id === selectedInstanceId && r.type === 'ec2')
+      const instanceRegion = instance?.region || selectedCredential.region
+
       // 调用后端API执行命令
       const response = await api.post('/cloud/operate', {
         credential_id: selectedCredential.id,
@@ -102,7 +106,8 @@ const ResourceOverview = () => {
         action: 'execute_command',
         resource_id: selectedInstanceId,
         params: {
-          command: command
+          command: command,
+          region: instanceRegion
         }
       })
 
@@ -112,14 +117,17 @@ const ResourceOverview = () => {
         } else {
           message.success('命令执行成功')
         }
-        // 更新任务状态为待处理（异步执行）
+        // 更新任务状态
         setCommandTasks(prev => prev.map(task => 
           task.id === taskId ? { 
             ...task, 
-            status: response.data.status || 'pending', 
-            commandId: response.data.commandId,
+            status: response.data.status || response.data.result?.status || 'success', 
+            commandId: response.data.commandId || response.data.result?.commandId,
             note: response.data.note || response.data.result?.note,
-            endTime: new Date().toISOString()
+            stdout: response.data.stdout || response.data.result?.stdout,
+            stderr: response.data.stderr || response.data.result?.stderr,
+            executionSteps: response.data.executionSteps || response.data.result?.executionSteps,
+            endTime: response.data.endTime || response.data.result?.endTime || new Date().toISOString()
           } : task
         ))
         
@@ -133,7 +141,13 @@ const ResourceOverview = () => {
             resource_id: selectedInstanceId,
             params: { command: command }
           }),
-          name: `EC2命令执行 - ${selectedInstanceId}`
+          name: `EC2命令执行 - ${selectedInstanceId}`,
+          status: response.data.status || 'success',
+          result: JSON.stringify({
+            stdout: response.data.stdout,
+            stderr: response.data.stderr,
+            commandId: response.data.commandId
+          })
         }))
       } else {
         message.error('命令执行失败: 未知错误')
@@ -155,6 +169,21 @@ const ResourceOverview = () => {
           error: errorMessage
         } : task
       ))
+      
+      // 创建全局任务记录（失败状态）
+      dispatch(createTask({
+        credentialId: selectedCredential.id,
+        taskType: 'operate',
+        parameters: JSON.stringify({
+          resource_type: 'ec2',
+          action: 'execute_command',
+          resource_id: selectedInstanceId,
+          params: { command: command }
+        }),
+        name: `EC2命令执行 - ${selectedInstanceId}`,
+        status: 'failed',
+        error: errorMessage
+      }))
     } finally {
       setLoading(false)
       setCommandModalVisible(false)
@@ -183,7 +212,7 @@ const ResourceOverview = () => {
               name: instance.tags?.Name || `Instance ${instance.instanceId}`,
               type: 'ec2',
               status: instance.state,
-              region: credential.region,
+              region: instance.region || credential.region,
               tags: instance.tags
             })
           })
@@ -1111,7 +1140,7 @@ const ResourceOverview = () => {
                   </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text type="secondary">开始时间: {new Date(task.startTime).toLocaleString()}</Text>
+                  <Text type="secondary">开始时间: {task.startTime ? new Date(task.startTime).toLocaleString() : 'N/A'}</Text>
                   {task.endTime && (
                     <Text type="secondary">结束时间: {new Date(task.endTime).toLocaleString()}</Text>
                   )}
@@ -1135,8 +1164,8 @@ const ResourceOverview = () => {
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center' }}>
                     <Badge 
-                      status={task.status === 'success' ? 'success' : task.status === 'running' ? 'processing' : 'error'}
-                      text={task.status === 'success' ? '成功' : task.status === 'running' ? '执行中' : '失败'}
+                      status={(task.status === 'success' || task.status === 'completed') ? 'success' : task.status === 'running' ? 'processing' : 'error'}
+                      text={(task.status === 'success' || task.status === 'completed') ? '成功' : task.status === 'running' ? '执行中' : '失败'}
                       style={{ marginRight: 8 }}
                     />
                   </div>
@@ -1154,13 +1183,45 @@ const ResourceOverview = () => {
                     </div>
                   )}
                   {task.note && (
-                    <div>
+                    <div style={{ marginBottom: 4 }}>
                       <Text type="secondary">{task.note}</Text>
+                    </div>
+                  )}
+                  {task.stdout && (
+                    <div style={{ marginBottom: 4 }}>
+                      <Text strong>标准输出:</Text>
+                      <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#f5f5f5', borderRadius: 4, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                        {task.stdout}
+                      </div>
+                    </div>
+                  )}
+                  {task.stderr && (
+                    <div style={{ marginBottom: 4 }}>
+                      <Text strong style={{ color: '#ff4d4f' }}>错误输出:</Text>
+                      <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#fff1f0', borderRadius: 4, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', color: '#ff4d4f' }}>
+                        {task.stderr}
+                      </div>
+                    </div>
+                  )}
+                  {task.error && (
+                    <div style={{ marginBottom: 4 }}>
+                      <Text strong style={{ color: '#ff4d4f' }}>错误信息:</Text>
+                      <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#fff1f0', borderRadius: 4, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', color: '#ff4d4f' }}>
+                        {task.error}
+                      </div>
+                    </div>
+                  )}
+                  {task.executionSteps && task.executionSteps.length > 0 && (
+                    <div style={{ marginBottom: 4 }}>
+                      <Text strong>执行流程:</Text>
+                      <div style={{ marginTop: 4, padding: '8px', backgroundColor: '#f0f5ff', borderRadius: 4, fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+                        {task.executionSteps.join('\n')}
+                      </div>
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Text type="secondary">开始时间: {new Date(task.startTime).toLocaleString()}</Text>
+                  <Text type="secondary">开始时间: {task.startTime ? new Date(task.startTime).toLocaleString() : 'N/A'}</Text>
                   {task.endTime && (
                     <Text type="secondary">结束时间: {new Date(task.endTime).toLocaleString()}</Text>
                   )}

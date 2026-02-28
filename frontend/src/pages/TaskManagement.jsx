@@ -107,8 +107,8 @@ const TaskManagement = () => {
       key: 'status',
       render: (status) => (
         <Badge 
-          status={status === 'success' ? 'success' : status === 'running' ? 'processing' : 'error'}
-          text={status === 'success' ? '成功' : status === 'running' ? '运行中' : '失败'}
+          status={(status === 'success' || status === 'completed') ? 'success' : status === 'running' ? 'processing' : 'error'}
+          text={(status === 'success' || status === 'completed') ? '成功' : status === 'running' ? '运行中' : '失败'}
         />
       )
     },
@@ -346,8 +346,8 @@ const TaskManagement = () => {
                 <Descriptions.Item label="任务类型">{getTaskTypeText(currentTask.taskType)}</Descriptions.Item>
                 <Descriptions.Item label="状态">
                   <Badge 
-                    status={currentTask.status === 'success' ? 'success' : currentTask.status === 'running' ? 'processing' : 'error'}
-                    text={currentTask.status === 'success' ? '成功' : currentTask.status === 'running' ? '运行中' : '失败'}
+                    status={(currentTask.status === 'success' || currentTask.status === 'completed') ? 'success' : currentTask.status === 'running' ? 'processing' : 'error'}
+                    text={(currentTask.status === 'success' || currentTask.status === 'completed') ? '成功' : currentTask.status === 'running' ? '运行中' : '失败'}
                   />
                 </Descriptions.Item>
                 <Descriptions.Item label="开始时间">{currentTask.startTime}</Descriptions.Item>

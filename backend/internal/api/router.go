@@ -838,66 +838,79 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 资源操作
-		result, err := provider.OperateResource(input.ResourceType, input.Action, input.ResourceID, input.Params)
+		// 为EC2命令执行准备任务记录
+	var taskID uint
+	if input.ResourceType == "ec2" && input.Action == "execute_command" {
+		// 将参数保存到数据库
+		// 创建任务记录
+		parameters, _ := json.Marshal(map[string]interface{}{
+			"resource_type": input.ResourceType,
+			"action":        input.Action,
+			"resource_id":   input.ResourceID,
+			"params":        input.Params,
+		})
+
+		task := database.Task{
+			UserID:       userID.(uint),
+			CredentialID: input.CredentialID,
+			TaskType:     "operate",
+			Status:       "running",
+			Parameters:   string(parameters),
+			StartTime:    time.Now().Format(time.RFC3339),
+		}
+
+		if err := db.Create(&task).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task: %v\n", err)
+		} else {
+			taskID = task.ID
+		}
+	}
+
+	// 资源操作
+	result, err := provider.OperateResource(input.ResourceType, input.Action, input.ResourceID, input.Params)
+
+	// 为EC2命令执行更新任务记录
+	if input.ResourceType == "ec2" && input.Action == "execute_command" && taskID > 0 {
+		// 更新任务状态
+		status := "completed"
+		errorMessage := ""
 		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to operate resource: " + err.Error()})
-			return
+			status = "failed"
+			errorMessage = err.Error()
 		}
 
-		// 为EC2命令执行创建任务记录
-		if input.ResourceType == "ec2" && input.Action == "execute_command" {
-			// 将结果保存到数据库
-			// 创建任务记录
-			parameters, _ := json.Marshal(map[string]interface{}{
-				"resource_type": input.ResourceType,
-				"action":        input.Action,
-				"resource_id":   input.ResourceID,
-				"params":        input.Params,
-			})
-
-			task := database.Task{
-				UserID:       userID.(uint),
-				CredentialID: input.CredentialID,
-				TaskType:     "operate",
-				Status:       "completed",
-				Parameters:   string(parameters),
-				StartTime:    time.Now().Format(time.RFC3339),
-				EndTime:      time.Now().Format(time.RFC3339),
+		task := database.Task{}
+		if err := db.First(&task, taskID).Error; err == nil {
+			task.Status = status
+			task.EndTime = time.Now().Format(time.RFC3339)
+			if err := db.Save(&task).Error; err != nil {
+				fmt.Printf("Failed to update task: %v\n", err)
 			}
-
-			if err := db.Create(&task).Error; err != nil {
-				// 记录错误但不影响返回结果
-				fmt.Printf("Failed to create task: %v\n", err)
-			}
-
-			// 创建任务结果记录
-			resultJSON, _ := json.Marshal(result)
-			taskResult := database.TaskResult{
-				TaskID:    task.ID,
-				Result:    string(resultJSON),
-				Error:     "",
-				Timestamp: time.Now().Format(time.RFC3339),
-			}
-
-			if err := db.Create(&taskResult).Error; err != nil {
-				// 记录错误但不影响返回结果
-				fmt.Printf("Failed to create task result: %v\n", err)
-			}
-
-			// 添加任务ID到响应
-			c.JSON(200, gin.H{
-				"message":       "Resource operation completed",
-				"credential":    credential.Name,
-				"resource_type": input.ResourceType,
-				"action":        input.Action,
-				"resource_id":   input.ResourceID,
-				"result":        result,
-				"task_id":       task.ID,
-			})
-			return
 		}
 
+		// 创建任务结果记录
+		resultJSON, _ := json.Marshal(result)
+		taskResult := database.TaskResult{
+			TaskID:    taskID,
+			Result:    string(resultJSON),
+			Error:     errorMessage,
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		if err := db.Create(&taskResult).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task result: %v\n", err)
+		}
+	}
+
+	if err != nil {
+		c.JSON(500, gin.H{"error": "Failed to operate resource: " + err.Error(), "task_id": taskID})
+		return
+	}
+
+	// 添加任务ID到响应
+	if input.ResourceType == "ec2" && input.Action == "execute_command" {
 		c.JSON(200, gin.H{
 			"message":       "Resource operation completed",
 			"credential":    credential.Name,
@@ -905,6 +918,18 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			"action":        input.Action,
 			"resource_id":   input.ResourceID,
 			"result":        result,
+			"task_id":       taskID,
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message":       "Resource operation completed",
+		"credential":    credential.Name,
+		"resource_type": input.ResourceType,
+		"action":        input.Action,
+		"resource_id":   input.ResourceID,
+		"result":        result,
 		})
 	}
 }
