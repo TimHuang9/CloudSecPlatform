@@ -1331,13 +1331,6 @@ const ResourceOverview = () => {
   // 资源表格列
   const resourceColumns = [
     {
-      title: '资源 ID',
-      dataIndex: 'id',
-      key: 'id',
-      ellipsis: true,
-      width: 200
-    },
-    {
       title: '资源名称',
       dataIndex: 'name',
       key: 'name',
@@ -1580,9 +1573,9 @@ const ResourceOverview = () => {
             )}
           </div>
           
-          <div style={{ display: 'flex', gap: 16 }}>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
             {/* 左侧区域栏目 */}
-            <div style={{ width: 260, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', flexShrink: 0, minWidth: 260 }}>
+            <div style={{ width: 280, padding: 16, backgroundColor: '#f9f9f9', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)', flexShrink: 0, minWidth: 280 }}>
               <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
                 <SearchOutlined style={{ marginRight: 8, color: '#1890ff' }} />
                 <Text strong style={{ fontSize: 16 }}>区域筛选</Text>
@@ -1830,7 +1823,7 @@ const ResourceOverview = () => {
               </div>
               
               {/* 资源表格内容 */}
-              <div style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 0 }}>
                 {loading ? (
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>
                     <Spin size="large" />
