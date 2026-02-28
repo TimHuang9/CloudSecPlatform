@@ -76,6 +76,7 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
 		authGroup.POST("/cloud/userinfo", getUserInfoHandler(db))
 		authGroup.POST("/cloud/resources", getResourcesFromDatabaseHandler(db))
+		authGroup.POST("/cloud/permissions", getPermissionsFromDatabaseHandler(db))
 		authGroup.POST("/cloud/download", downloadFileHandler(db))
 
 		// 结果分析
@@ -795,10 +796,46 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 将结果保存到数据库
+		// 创建任务记录
+		parameters, _ := json.Marshal(map[string]interface{}{
+			"credential_id": input.CredentialID,
+		})
+
+		task := database.Task{
+			UserID:       userID.(uint),
+			CredentialID: input.CredentialID,
+			TaskType:     "escalate",
+			Status:       "completed",
+			Parameters:   string(parameters),
+			StartTime:    time.Now().Format(time.RFC3339),
+			EndTime:      time.Now().Format(time.RFC3339),
+		}
+
+		if err := db.Create(&task).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task: %v\n", err)
+		}
+
+		// 创建任务结果记录
+		resultJSON, _ := json.Marshal(result)
+		taskResult := database.TaskResult{
+			TaskID:    task.ID,
+			Result:    string(resultJSON),
+			Error:     "",
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		if err := db.Create(&taskResult).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task result: %v\n", err)
+		}
+
 		c.JSON(200, gin.H{
 			"message":    "Privilege escalation completed",
 			"credential": credential.Name,
 			"result":     result,
+			"task_id":    task.ID,
 		})
 	}
 }
@@ -1095,6 +1132,83 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(200, gin.H{
 			"message":    "Resources fetched from database",
+			"credential": credential.Name,
+			"result":     result,
+			"task_id":    task.ID,
+			"timestamp":  task.EndTime,
+		})
+	}
+}
+
+// 从数据库获取权限信息
+func getPermissionsFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		var input struct {
+			CredentialID uint `json:"credential_id" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 验证凭证是否属于该用户
+		var credential database.CloudCredential
+		if result := db.Where("id = ? AND user_id = ?", input.CredentialID, userID).First(&credential); result.Error != nil {
+			c.JSON(404, gin.H{"error": "Credential not found"})
+			return
+		}
+
+		// 查找最新的权限提升任务
+		var task database.Task
+		if result := db.Where("user_id = ? AND credential_id = ? AND task_type = ? AND status = ?", userID, input.CredentialID, "escalate", "completed").Order("end_time DESC").First(&task); result.Error != nil {
+			// 找不到权限提升任务，返回空权限结构
+			c.JSON(200, gin.H{
+				"message":    "No escalation task found",
+				"credential": credential.Name,
+				"result":     nil,
+				"task_id":    0,
+				"timestamp":  "",
+			})
+			return
+		}
+
+		// 查找任务结果
+		var taskResult database.TaskResult
+		if result := db.Where("task_id = ?", task.ID).First(&taskResult); result.Error != nil {
+			// 找不到任务结果，返回空权限结构
+			c.JSON(200, gin.H{
+				"message":    "Task result not found",
+				"credential": credential.Name,
+				"result":     nil,
+				"task_id":    task.ID,
+				"timestamp":  task.EndTime,
+			})
+			return
+		}
+
+		// 解析结果JSON
+		var result map[string]interface{}
+		if err := json.Unmarshal([]byte(taskResult.Result), &result); err != nil {
+			// 解析失败，返回空权限结构
+			c.JSON(200, gin.H{
+				"message":    "Failed to parse task result",
+				"credential": credential.Name,
+				"result":     nil,
+				"task_id":    task.ID,
+				"timestamp":  task.EndTime,
+			})
+			return
+		}
+
+		c.JSON(200, gin.H{
+			"message":    "Permissions fetched from database",
 			"credential": credential.Name,
 			"result":     result,
 			"task_id":    task.ID,

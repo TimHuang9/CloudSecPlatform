@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
 import { createTask } from '../store/taskSlice'
-import { Typography, Card, Select, Table, Tabs, Spin, message, Alert, Button, Modal, List, Badge } from 'antd'
+import { Typography, Card, Select, Table, Tabs, Spin, message, Alert, Button, Modal, List, Badge, Tag } from 'antd'
 import { CloudOutlined, KeyOutlined, DatabaseOutlined, AppstoreOutlined, UploadOutlined, UserOutlined, SearchOutlined, DownloadOutlined, DownOutlined, RightOutlined, FolderOpenOutlined, BuildOutlined } from '@ant-design/icons'
 import ReactFlow, { Controls, Background, MiniMap } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -44,10 +44,14 @@ const ResourceOverview = () => {
   const [selectedFiles, setSelectedFiles] = useState({})
   const [topologyData, setTopologyData] = useState(null)
   const [topologyLoading, setTopologyLoading] = useState(false)
+  const [escalationData, setEscalationData] = useState(null)
+  const [escalationLoading, setEscalationLoading] = useState(false)
   const [scale, setScale] = useState(1)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [startDrag, setStartDrag] = useState({ x: 0, y: 0 })
+  const [permissions, setPermissions] = useState(null)
+  const [permissionsLoading, setPermissionsLoading] = useState(false)
   const topologyRef = useRef(null)
 
   useEffect(() => {
@@ -59,11 +63,46 @@ const ResourceOverview = () => {
     const credential = credentials.find(c => c.id === parseInt(credentialId))
     setSelectedCredential(credential)
     setSelectedRegion('all') // 重置区域选择
+    setPermissions(null) // 重置权限信息
     if (credential) {
       fetchResources(credential)
+      fetchPermissions(credential)
     } else {
       setResources([])
       setError(null)
+    }
+  }
+
+  // 获取权限信息
+  const fetchPermissions = async (credential) => {
+    setPermissionsLoading(true)
+    try {
+      // 先尝试从数据库读取权限信息
+      const response = await api.post('/cloud/permissions', {
+        credential_id: credential.id
+      })
+      
+      if (response.data && response.data.result) {
+        setPermissions(response.data.result)
+        message.success('从数据库读取权限信息成功')
+      } else {
+        // 如果数据库中没有权限信息，调用云API获取
+        const cloudResponse = await api.post('/cloud/escalate', {
+          credential_id: credential.id
+        })
+        
+        if (cloudResponse.data && cloudResponse.data.result) {
+          setPermissions(cloudResponse.data.result)
+          message.success('从云API获取权限信息成功')
+        } else {
+          setPermissions(null)
+        }
+      }
+    } catch (error) {
+      console.error('获取权限信息失败:', error)
+      setPermissions(null)
+    } finally {
+      setPermissionsLoading(false)
     }
   }
 
@@ -787,7 +826,7 @@ const ResourceOverview = () => {
       const centerNodeId = 'cloud_account'
       nodes.push({
         id: centerNodeId,
-        position: { x: 400, y: 50 },
+        position: { x: 500, y: 50 },
         data: { label: `${selectedCredential.cloudProvider} Account: ${selectedCredential.name}` },
         style: {
           backgroundColor: '#f0f0f0',
@@ -908,6 +947,341 @@ const ResourceOverview = () => {
       setTopologyData(null)
     } finally {
       setTopologyLoading(false)
+    }
+  }
+
+  // 生成提权路径
+  const handleGenerateEscalationPath = async () => {
+    if (!selectedCredential) {
+      message.warning('请选择凭证')
+      return
+    }
+
+    setEscalationLoading(true)
+    try {
+      // 检查是否有权限信息
+      if (!permissions) {
+        message.warning('请先获取权限信息，然后再生成提权路径')
+        setEscalationLoading(false)
+        return
+      }
+
+      // 从 pathfinding.cloud 获取的提权路径数据
+      const escalationPaths = [
+        {
+          id: 'APPRUNNER-001',
+          name: 'AppRunner 提权',
+          description: 'iam:PassRole + apprunner:CreateService',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'APPRUNNER-002',
+          name: 'AppRunner 提权',
+          description: 'apprunner:UpdateService',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'BEDROCK-001',
+          name: 'Bedrock 提权',
+          description: 'iam:PassRole + bedrock-agentcore:CreateCodeInterpreter + bedrock-agentcore:StartCodeInterpreterSession + bedrock-agentcore:InvokeCodeInterpreter',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'BEDROCK-002',
+          name: 'Bedrock 提权',
+          description: 'bedrock-agentcore:StartCodeInterpreterSession + bedrock-agentcore:InvokeCodeInterpreter',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'CLOUDFORMATION-001',
+          name: 'CloudFormation 提权',
+          description: 'iam:PassRole + cloudformation:CreateStack',
+          type: 'New Passrole',
+          risk: 'PMCSPR'
+        },
+        {
+          id: 'CLOUDFORMATION-002',
+          name: 'CloudFormation 提权',
+          description: 'cloudformation:UpdateStack',
+          type: 'Existing Passrole',
+          risk: 'PMPR'
+        },
+        {
+          id: 'CODEBUILD-001',
+          name: 'CodeBuild 提权',
+          description: 'iam:PassRole + codebuild:CreateProject',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'CODEBUILD-002',
+          name: 'CodeBuild 提权',
+          description: 'codebuild:UpdateProject',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'CODEPIPELINE-001',
+          name: 'CodePipeline 提权',
+          description: 'iam:PassRole + codepipeline:CreatePipeline',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'CODEPIPELINE-002',
+          name: 'CodePipeline 提权',
+          description: 'codepipeline:UpdatePipeline',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'DATAPIPELINE-001',
+          name: 'DataPipeline 提权',
+          description: 'iam:PassRole + datapipeline:CreatePipeline',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'DATAPIPELINE-002',
+          name: 'DataPipeline 提权',
+          description: 'datapipeline:PutPipelineDefinition',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'EC2-001',
+          name: 'EC2 提权',
+          description: 'iam:PassRole + ec2:RunInstances',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'EC2-002',
+          name: 'EC2 提权',
+          description: 'ec2:AssociateIamInstanceProfile',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'ECS-001',
+          name: 'ECS 提权',
+          description: 'iam:PassRole + ecs:CreateTaskDefinition',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'ECS-002',
+          name: 'ECS 提权',
+          description: 'ecs:RunTask',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'EKS-001',
+          name: 'EKS 提权',
+          description: 'iam:PassRole + eks:CreateCluster',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'EKS-002',
+          name: 'EKS 提权',
+          description: 'eks:UpdateClusterConfig',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'GLUE-001',
+          name: 'Glue 提权',
+          description: 'iam:PassRole + glue:CreateJob',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'GLUE-002',
+          name: 'Glue 提权',
+          description: 'glue:UpdateJob',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'IAM-001',
+          name: 'IAM 提权',
+          description: 'iam:CreateUser + iam:PutUserPolicy',
+          type: 'New User',
+          risk: 'PMPR'
+        },
+        {
+          id: 'IAM-002',
+          name: 'IAM 提权',
+          description: 'iam:CreateRole + iam:PutRolePolicy',
+          type: 'New Role',
+          risk: 'PMPR'
+        },
+        {
+          id: 'LAMBDA-001',
+          name: 'Lambda 提权',
+          description: 'iam:PassRole + lambda:CreateFunction',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'LAMBDA-002',
+          name: 'Lambda 提权',
+          description: 'lambda:UpdateFunctionCode',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'RDS-001',
+          name: 'RDS 提权',
+          description: 'iam:PassRole + rds:CreateDBInstance',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'RDS-002',
+          name: 'RDS 提权',
+          description: 'rds:ModifyDBInstance',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'S3-001',
+          name: 'S3 提权',
+          description: 's3:PutObject + s3:PutObjectAcl',
+          type: 'Bucket Policy',
+          risk: 'PR'
+        },
+        {
+          id: 'SNS-001',
+          name: 'SNS 提权',
+          description: 'sns:CreateTopic + sns:SetTopicAttributes',
+          type: 'Topic Policy',
+          risk: 'PR'
+        },
+        {
+          id: 'SQS-001',
+          name: 'SQS 提权',
+          description: 'sqs:CreateQueue + sqs:SetQueueAttributes',
+          type: 'Queue Policy',
+          risk: 'PR'
+        },
+        {
+          id: 'STEPFUNCTIONS-001',
+          name: 'Step Functions 提权',
+          description: 'iam:PassRole + states:CreateStateMachine',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'STEPFUNCTIONS-002',
+          name: 'Step Functions 提权',
+          description: 'states:UpdateStateMachine',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'TRANSFER-001',
+          name: 'Transfer 提权',
+          description: 'iam:PassRole + transfer:CreateServer',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'TRANSFER-002',
+          name: 'Transfer 提权',
+          description: 'transfer:UpdateServer',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'WORKSPACES-001',
+          name: 'WorkSpaces 提权',
+          description: 'iam:PassRole + workspaces:CreateWorkspaces',
+          type: 'New Passrole',
+          risk: 'PR'
+        },
+        {
+          id: 'WORKSPACES-002',
+          name: 'WorkSpaces 提权',
+          description: 'workspaces:ModifyWorkspaceProperties',
+          type: 'Existing Passrole',
+          risk: 'PR'
+        }
+      ]
+
+      // 生成React Flow节点和边
+      const nodes = []
+      const edges = []
+
+      // 添加当前权限节点
+      const currentPermissionNodeId = 'current_permission'
+      nodes.push({
+        id: currentPermissionNodeId,
+        position: { x: 400, y: 50 },
+        data: { label: `当前权限: ${permissions.userType || 'Unknown'}` },
+        style: {
+          backgroundColor: '#f0f0f0',
+          border: '2px solid #333',
+          borderRadius: '8px',
+          padding: '10px',
+          fontSize: '14px',
+          fontWeight: 'bold'
+        },
+        type: 'default'
+      })
+
+      // 添加提权路径节点
+      let xOffset = 0
+      const yOffset = 150
+      const nodeWidth = 300
+
+      escalationPaths.forEach((path, index) => {
+        const nodeId = `path_${path.id}`
+        const xPosition = 150 + (index % 3) * (nodeWidth + 100)
+        const yPosition = 150 + Math.floor(index / 3) * yOffset
+
+        nodes.push({
+          id: nodeId,
+          position: { x: xPosition, y: yPosition },
+          data: {
+            label: `${path.id}\n${path.name}\n${path.description}\n类型: ${path.type}\n风险: ${path.risk}`
+          },
+          style: {
+            backgroundColor: '#fff1f0',
+            border: '2px solid #ff4d4f',
+            borderRadius: '8px',
+            padding: '10px',
+            fontSize: '12px',
+            width: nodeWidth
+          },
+          type: 'default'
+        })
+
+        // 连接当前权限到提权路径
+        edges.push({
+          id: `edge_${currentPermissionNodeId}_${nodeId}`,
+          source: currentPermissionNodeId,
+          target: nodeId,
+          style: { stroke: '#ff4d4f' },
+          animated: true
+        })
+      })
+
+      // 设置提权路径数据
+      setEscalationData({ nodes, edges })
+      message.success('提权路径生成成功')
+    } catch (error) {
+      console.error('生成提权路径失败:', error)
+      message.error('生成提权路径失败: ' + (error.response?.data?.error || '未知错误'))
+      setEscalationData(null)
+    } finally {
+      setEscalationLoading(false)
     }
   }
 
@@ -1156,6 +1530,56 @@ const ResourceOverview = () => {
             <Text strong>当前凭证：</Text> {selectedCredential.name} ({selectedCredential.cloudProvider})
           </div>
           
+          {/* 权限列表 */}
+          <div style={{ marginBottom: 24 }}>
+            <Title level={4}>权限分析</Title>
+            {permissionsLoading ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <Spin size="small" />
+                <div style={{ marginTop: 8 }}>正在获取权限信息...</div>
+              </div>
+            ) : permissions ? (
+              permissions.userType === 'ROOT' ? (
+                <div style={{ backgroundColor: '#f6ffed', padding: '16px', borderRadius: '8px', border: '1px solid #b7eb8f' }}>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div style={{ marginRight: 12, fontSize: 24, color: '#52c41a' }}>✅</div>
+                    <div>
+                      <Text strong style={{ color: '#389e0d' }}>无需提权，权限为ROOT</Text>
+                      <div style={{ marginTop: 8, color: '#52c41a' }}>您当前拥有最高权限，无需进行权限提升操作。</div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ backgroundColor: '#f9f9f9', padding: '16px', borderRadius: '8px' }}>
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong>用户类型：</Text> {permissions.userType}
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong>用户：</Text> {permissions.user}
+                  </div>
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong>权限：</Text>
+                    <ul style={{ margin: '8px 0 0 20px' }}>
+                      {permissions.permissions.map((permission, index) => (
+                        <li key={index}>{permission}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <Text strong>风险等级：</Text> 
+                    <Tag color={permissions.riskLevel === 'High' ? 'red' : permissions.riskLevel === 'Medium' ? 'orange' : 'green'}>
+                      {permissions.riskLevel}
+                    </Tag>
+                  </div>
+                </div>
+              )
+            ) : (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <Text type="secondary">无法获取权限信息</Text>
+              </div>
+            )}
+          </div>
+          
           <div style={{ display: 'flex', gap: 16 }}>
             {/* 左侧区域栏目 */}
             <div style={{ width: 240, padding: 16, backgroundColor: '#ffffff', borderRadius: 8, boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)' }}>
@@ -1175,7 +1599,9 @@ const ResourceOverview = () => {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    transition: 'all 0.3s ease'
+                    transition: 'all 0.3s ease',
+                    width: '100%',
+                    boxSizing: 'border-box'
                   }}
                   onClick={() => setSelectedRegion('all')}
                 >
@@ -1222,7 +1648,9 @@ const ResourceOverview = () => {
                         cursor: 'pointer',
                         backgroundColor: selectedRegion === region ? '#1890ff' : '#f5f5f5',
                         color: selectedRegion === region ? '#ffffff' : '#333333',
-                        transition: 'all 0.3s ease'
+                        transition: 'all 0.3s ease',
+                        width: '100%',
+                        boxSizing: 'border-box'
                       }}
                       onClick={() => setSelectedRegion(region)}
                     >
@@ -1618,6 +2046,51 @@ const ResourceOverview = () => {
             ) : (
               <div style={{ textAlign: 'center', padding: '40px 0' }}>
                 <Text type="secondary">请点击"生成拓扑图"按钮生成资源拓扑</Text>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* 提权路径 */}
+      {selectedCredential && (
+        <Card style={{ marginTop: 24 }}>
+          <Title level={4}>提权路径</Title>
+          <div style={{ marginBottom: 16 }}>
+            <Button 
+              type="primary" 
+              icon={<KeyOutlined />}
+              onClick={handleGenerateEscalationPath}
+              loading={escalationLoading}
+              style={{ marginBottom: 16 }}
+            >
+              生成提权路径
+            </Button>
+            
+            {escalationData ? (
+              <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
+                <h3>提权路径结果</h3>
+                <div style={{ marginTop: 16, width: '100%' }}>
+                  <div style={{ width: '100%', height: '600px', border: '1px solid #e8e8e8', borderRadius: '4px' }}>
+                    <ReactFlow
+                      nodes={escalationData.nodes}
+                      edges={escalationData.edges}
+                      defaultZoom={1}
+                      defaultPosition={{ x: 0, y: 0 }}
+                      minZoom={0.1}
+                      maxZoom={5}
+                      fitView
+                    >
+                      <Controls />
+                      <Background variant="dots" gap={12} size={1} />
+                      <MiniMap />
+                    </ReactFlow>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Text type="secondary">请点击"生成提权路径"按钮生成提权路径拓扑</Text>
               </div>
             )}
           </div>
