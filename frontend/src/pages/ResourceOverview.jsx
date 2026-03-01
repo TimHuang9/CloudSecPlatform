@@ -1586,9 +1586,11 @@ const ResourceOverview = () => {
                   <div style={{ marginBottom: 12 }}>
                     <Text strong>权限：</Text>
                     <ul style={{ margin: '8px 0 0 20px' }}>
-                      {permissions.permissions.map((permission, index) => (
+                      {permissions.permissions && Array.isArray(permissions.permissions) ? permissions.permissions.map((permission, index) => (
                         <li key={index}>{permission}</li>
-                      ))}
+                      )) : (
+                        <li>无权限信息</li>
+                      )}
                     </ul>
                   </div>
                   <div>

@@ -295,7 +295,12 @@ const Dashboard = () => {
             ) : taskStatistics.total > 0 ? (
               <>
                 <div style={{ marginBottom: 24 }}>
-                  <Text>总体执行进度</Text>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text>总体执行进度</Text>
+                    <Text>
+                      总数: {taskStatistics.total} | 成功: {taskStatistics.success} | 失败: {taskStatistics.failed} | 成功率: {Math.round((taskStatistics.success / taskStatistics.total) * 100)}%
+                    </Text>
+                  </div>
                   <Progress 
                     percent={Math.round((taskStatistics.success / taskStatistics.total) * 100)} 
                     status={taskStatistics.running > 0 ? "active" : taskStatistics.success === taskStatistics.total ? "success" : "exception"} 
@@ -303,7 +308,12 @@ const Dashboard = () => {
                 </div>
                 {Object.entries(taskStatistics.byCloud).map(([cloud, stats]) => (
                   <div key={cloud} style={{ marginBottom: 24 }}>
-                    <Text>{cloud} 任务</Text>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <Text>{cloud} 任务</Text>
+                      <Text>
+                        总数: {stats.total} | 成功: {stats.success} | 失败: {stats.failed} | 成功率: {Math.round((stats.success / stats.total) * 100)}%
+                      </Text>
+                    </div>
                     <Progress 
                       percent={Math.round((stats.success / stats.total) * 100)} 
                       status={stats.running > 0 ? "active" : stats.success === stats.total ? "success" : "exception"} 
