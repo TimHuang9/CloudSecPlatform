@@ -52,8 +52,30 @@ const AKSKUtilization = () => {
   
   // 资源组管理
   const [resourceGroups, setResourceGroups] = useState(() => {
-    const savedGroups = localStorage.getItem('resourceGroups')
-    return savedGroups ? JSON.parse(savedGroups) : []
+    // 内置默认资源组
+    const defaultGroups = [
+      {
+        id: '1',
+        name: '敏感数据',
+        resources: ['s3', 'dynamodb', 'secretsmanager', 'rds'],
+        created: new Date().toISOString()
+      },
+      {
+        id: '2',
+        name: '运行实例',
+        resources: ['ec2', 'lambda', 'eks'],
+        created: new Date().toISOString()
+      },
+      {
+        id: '3',
+        name: '网络架构',
+        resources: ['vpc', 'route', 'elb', 'apigateway'],
+        created: new Date().toISOString()
+      }
+    ]
+    // 强制更新localStorage，确保默认资源组存在
+    localStorage.setItem('resourceGroups', JSON.stringify(defaultGroups))
+    return defaultGroups
   })
   const [selectedResourceGroup, setSelectedResourceGroup] = useState(null)
   const [showGroupModal, setShowGroupModal] = useState(false)
@@ -208,8 +230,6 @@ const AKSKUtilization = () => {
     setPrivilegeResult(null)
     setTakeoverResult(null)
   }
-
-
 
   // 处理分类标签变化
   const handleCategoryChange = (category) => {
@@ -1807,8 +1827,6 @@ const AKSKUtilization = () => {
       </div>
     )
   }
-
-
 
   // 资源表格列
   const resourceColumns = [
