@@ -123,7 +123,10 @@ const taskSlice = createSlice({
       })
       .addCase(fetchTasks.fulfilled, (state, action) => {
         state.loading = false
-        state.tasks = action.payload
+        // 按照开始时间降序排序，最新的任务排在前面
+        state.tasks = action.payload.sort((a, b) => {
+          return new Date(b.startTime) - new Date(a.startTime)
+        })
       })
       .addCase(fetchTasks.rejected, (state, action) => {
         state.loading = false
@@ -138,7 +141,11 @@ const taskSlice = createSlice({
       })
       .addCase(createTask.fulfilled, (state, action) => {
         state.loading = false
+        // 添加新任务后重新排序，确保最新的任务排在前面
         state.tasks.push(action.payload)
+        state.tasks.sort((a, b) => {
+          return new Date(b.startTime) - new Date(a.startTime)
+        })
       })
       .addCase(createTask.rejected, (state, action) => {
         state.loading = false

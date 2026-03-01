@@ -56,7 +56,7 @@ const AKSKUtilization = () => {
       {
         id: '1',
         name: '敏感数据',
-        resources: ['s3', 'dynamodb', 'secretsmanager', 'rds'],
+        resources: ['s3', 'dynamodb', 'secretsmanager', 'rds', 'codecommit', 'ecr'],
         created: new Date().toISOString()
       },
       {
@@ -272,7 +272,7 @@ const AKSKUtilization = () => {
     
     if (selectedResourceTypes.includes('all')) {
       // 如果选择了'all'，枚举所有资源
-      const allTypes = ['ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds', 'lambda', 'apigateway', 'cloudtrail', 'cloudwatchlogs', 'dynamodb', 'secretsmanager', 'sns', 'sqs']
+      const allTypes = ['ec2', 's3', 'iamRoles', 'iamUsers', 'vpc', 'route', 'elb', 'eks', 'kms', 'rds', 'lambda', 'apigateway', 'cloudtrail', 'cloudwatchlogs', 'dynamodb', 'secretsmanager', 'sns', 'sqs', 'codecommit', 'ecr']
       allTypes.forEach(type => {
         if (!addedTypes.has(type)) {
           resourceTypesToEnumerate.push(type)

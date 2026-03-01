@@ -535,6 +535,32 @@ const ResourceOverview = () => {
           })
         }
         
+        // 处理 CodeCommit 仓库
+        if (result.codecommitRepositories && Array.isArray(result.codecommitRepositories)) {
+          result.codecommitRepositories.forEach(repo => {
+            allResources.push({
+              id: repo.repositoryId,
+              name: repo.repositoryName,
+              type: 'codecommit',
+              status: 'active',
+              region: repo.region || credential.region
+            })
+          })
+        }
+        
+        // 处理 ECR 仓库
+        if (result.ecrRepositories && Array.isArray(result.ecrRepositories)) {
+          result.ecrRepositories.forEach(repo => {
+            allResources.push({
+              id: repo.repositoryUri,
+              name: repo.repositoryName,
+              type: 'ecr',
+              status: 'active',
+              region: repo.region || credential.region
+            })
+          })
+        }
+        
         setResources(allResources)
         message.success('从数据库读取资源成功')
       } else {
@@ -1348,24 +1374,26 @@ const ResourceOverview = () => {
       width: 150,
       render: (type) => {
         const typeMap = {
-          ec2: 'EC2 实例',
-          s3: 'S3 存储桶',
-          iam: 'IAM 资源',
-          vpc: 'VPC',
-          route: '路由表',
-          elb: '负载均衡器',
-          eks: 'EKS 集群',
-          kms: 'KMS 密钥',
-          rds: 'RDS 数据库',
-          lambda: 'Lambda 函数',
-          apigateway: 'API Gateway',
-          cloudtrail: 'CloudTrail',
-          cloudwatchlogs: 'CloudWatch Logs',
-          dynamodb: 'DynamoDB 表',
-          secretsmanager: 'Secrets Manager',
-          sns: 'SNS 主题',
-          sqs: 'SQS 队列'
-        }
+            ec2: 'EC2 实例',
+            s3: 'S3 存储桶',
+            iam: 'IAM 资源',
+            vpc: 'VPC',
+            route: '路由表',
+            elb: '负载均衡器',
+            eks: 'EKS 集群',
+            kms: 'KMS 密钥',
+            rds: 'RDS 数据库',
+            lambda: 'Lambda 函数',
+            apigateway: 'API Gateway',
+            cloudtrail: 'CloudTrail',
+            cloudwatchlogs: 'CloudWatch Logs',
+            dynamodb: 'DynamoDB 表',
+            secretsmanager: 'Secrets Manager',
+            sns: 'SNS 主题',
+            sqs: 'SQS 队列',
+            codecommit: 'CodeCommit 仓库',
+            ecr: 'ECR 仓库'
+          }
         return typeMap[type] || type
       }
     },
@@ -1449,7 +1477,9 @@ const ResourceOverview = () => {
         { key: 'dynamodb', label: 'DynamoDB 表', icon: <DatabaseOutlined /> },
         { key: 'secretsmanager', label: 'Secrets Manager', icon: <KeyOutlined /> },
         { key: 'sns', label: 'SNS 主题', icon: <AppstoreOutlined /> },
-        { key: 'sqs', label: 'SQS 队列', icon: <AppstoreOutlined /> }
+        { key: 'sqs', label: 'SQS 队列', icon: <AppstoreOutlined /> },
+        { key: 'codecommit', label: 'CodeCommit 仓库', icon: <AppstoreOutlined /> },
+        { key: 'ecr', label: 'ECR 仓库', icon: <AppstoreOutlined /> }
       ]
     } else if (selectedCredential.cloudProvider === '阿里云') {
       return [
