@@ -2311,6 +2311,51 @@ const AKSKUtilization = () => {
                         </div>
                       )}
                     </Card>
+                    
+                    {/* 策略详情卡片 */}
+                    <Card title="策略详情" size="small">
+                      {permissions.policyDetails && Array.isArray(permissions.policyDetails) && permissions.policyDetails.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          {permissions.policyDetails.map((policy, index) => (
+                            <div key={index} style={{ padding: '12px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>策略类型：</Text> {policy.policyType}
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>策略名称：</Text> {policy.policyName}
+                              </div>
+                              {policy.policyArn && (
+                                <div style={{ marginBottom: 8 }}>
+                                  <Text strong>策略 ARN：</Text> {policy.policyArn}
+                                </div>
+                              )}
+                              <div>
+                                <Text strong>策略内容：</Text>
+                                <div style={{ 
+                                  backgroundColor: '#ffffff', 
+                                  padding: '12px', 
+                                  borderRadius: '4px', 
+                                  overflowX: 'auto',
+                                  fontFamily: 'monospace',
+                                  fontSize: '12px',
+                                  marginTop: 8
+                                }}>
+                                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                                    {JSON.stringify(policy.policyDocument, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: '#999' }}>
+                          暂无策略详情
+                        </div>
+                      )}
+                    </Card>
+                    
+
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>

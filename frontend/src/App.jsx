@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { Layout, Menu, ConfigProvider, Typography } from 'antd'
+import { Layout, Menu, ConfigProvider, Typography, Select } from 'antd'
 import {
   DashboardOutlined,
   KeyOutlined,
@@ -30,10 +30,46 @@ const { Title } = Typography
 function App() {
   const { isAuthenticated } = useSelector(state => state.auth)
   const [mounted, setMounted] = useState(false)
+  const [language, setLanguage] = useState('zh') // 默认为中文
 
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  // 语言选项
+  const languageOptions = [
+    { value: 'zh', label: '中文' },
+    { value: 'en', label: 'English' }
+  ]
+
+  // 菜单项国际化
+  const menuItems = {
+    zh: {
+      dashboard: '仪表盘',
+      credentials: '凭证管理',
+      aksk: 'AKSK 利用',
+      tasks: '任务管理',
+      resources: '资源总览',
+      apt: 'APT攻击剧本',
+      settings: '系统配置',
+      logout: '退出登录',
+      platformName: '云安全评估平台'
+    },
+    en: {
+      dashboard: 'Dashboard',
+      credentials: 'Credential Management',
+      aksk: 'AKSK Utilization',
+      tasks: 'Task Management',
+      resources: 'Resource Overview',
+      apt: 'APT Attack Playbooks',
+      settings: 'System Settings',
+      logout: 'Logout',
+      platformName: 'Cloud Security Platform'
+    }
+  }
+
+  // 获取当前语言的菜单项
+  const currentMenuItems = menuItems[language]
 
   // 私有路由组件
   const PrivateRoute = ({ children }) => {
@@ -56,43 +92,43 @@ function App() {
           {
             key: 'dashboard',
             icon: <DashboardOutlined style={{ fontSize: '18px' }} />,
-            label: '仪表盘',
+            label: currentMenuItems.dashboard,
             path: '/dashboard'
           },
           {
             key: 'credentials',
             icon: <KeyOutlined style={{ fontSize: '18px' }} />,
-            label: '凭证管理',
+            label: currentMenuItems.credentials,
             path: '/credentials'
           },
           {
             key: 'aksk',
             icon: <KeyOutlined style={{ fontSize: '18px' }} />,
-            label: 'AKSK 利用',
+            label: currentMenuItems.aksk,
             path: '/aksk'
           },
           {
             key: 'tasks',
             icon: <AppstoreOutlined style={{ fontSize: '18px' }} />,
-            label: '任务管理',
+            label: currentMenuItems.tasks,
             path: '/tasks'
           },
           {
             key: 'resources',
             icon: <DatabaseOutlined style={{ fontSize: '18px' }} />,
-            label: '资源总览',
+            label: currentMenuItems.resources,
             path: '/resources'
           },
           {
             key: 'apt',
             icon: <AlertOutlined style={{ fontSize: '18px' }} />,
-            label: 'APT攻击剧本',
+            label: currentMenuItems.apt,
             path: '/apt'
           },
           {
             key: 'settings',
             icon: <SettingOutlined style={{ fontSize: '18px' }} />,
-            label: '系统配置',
+            label: currentMenuItems.settings,
             path: '/settings'
           },
         ]}
@@ -117,27 +153,37 @@ function App() {
     const dispatch = useDispatch();
     
     return (
-      <Menu
-        theme="light"
-        mode="horizontal"
-        items={[
-          {
-            key: 'logout',
-            icon: <LogoutOutlined />,
-            label: '退出登录',
-          }
-        ]}
-        onClick={({ key }) => {
-          if (key === 'logout') {
-            // 退出登录逻辑
-            dispatch(logout());
-            navigate('/login');
-          }
-        }}
-        style={{
-          borderBottom: 'none'
-        }}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* 语言切换 */}
+        <Select
+          defaultValue={language}
+          onChange={setLanguage}
+          options={languageOptions}
+          style={{ width: 120 }}
+        />
+        
+        <Menu
+          theme="light"
+          mode="horizontal"
+          items={[
+            {
+              key: 'logout',
+              icon: <LogoutOutlined />,
+              label: currentMenuItems.logout,
+            }
+          ]}
+          onClick={({ key }) => {
+            if (key === 'logout') {
+              // 退出登录逻辑
+              dispatch(logout());
+              navigate('/login');
+            }
+          }}
+          style={{
+            borderBottom: 'none'
+          }}
+        />
+      </div>
     );
   };
 
@@ -198,7 +244,7 @@ function App() {
                     fontWeight: '600',
                     fontSize: '18px'
                   }}>
-                    云安全评估平台
+                    {currentMenuItems.platformName}
                   </Title>
                 </div>
               </div>

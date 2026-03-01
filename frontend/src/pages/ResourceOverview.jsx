@@ -1576,28 +1576,70 @@ const ResourceOverview = () => {
                   </div>
                 </div>
               ) : (
-                <div style={{ backgroundColor: '#f9f9f9', padding: '16px', borderRadius: '8px' }}>
-                  <div style={{ marginBottom: 12 }}>
-                    <Text strong>用户类型：</Text> {permissions.userType}
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <Text strong>用户：</Text> {permissions.user}
-                  </div>
-                  <div style={{ marginBottom: 12 }}>
-                    <Text strong>权限：</Text>
-                    <ul style={{ margin: '8px 0 0 20px' }}>
-                      {permissions.permissions && Array.isArray(permissions.permissions) ? permissions.permissions.map((permission, index) => (
-                        <li key={index}>{permission}</li>
-                      )) : (
-                        <li>无权限信息</li>
+                <div>
+                  <div style={{ backgroundColor: '#f9f9f9', padding: '16px', borderRadius: '8px', marginBottom: 16 }}>
+                    <div style={{ marginBottom: 12 }}>
+                      <Text strong>用户类型：</Text> {permissions.userType}
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <Text strong>用户：</Text> {permissions.user}
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <Text strong>权限：</Text>
+                      <ul style={{ margin: '8px 0 0 20px' }}>
+                        {permissions.permissions && Array.isArray(permissions.permissions) ? permissions.permissions.map((permission, index) => (
+                          <li key={index}>{permission}</li>
+                        )) : (
+                          <li>无权限信息</li>
+                        )}
+                      </ul>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <Text strong>策略详情：</Text>
+                      {permissions.policyDetails && Array.isArray(permissions.policyDetails) && permissions.policyDetails.length > 0 ? (
+                        <div style={{ marginTop: 8 }}>
+                          {permissions.policyDetails.map((policy, index) => (
+                            <div key={index} style={{ marginBottom: 12, padding: '12px', backgroundColor: '#f5f5f5', borderRadius: '4px' }}>
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>策略类型：</Text> {policy.policyType}
+                              </div>
+                              <div style={{ marginBottom: 8 }}>
+                                <Text strong>策略名称：</Text> {policy.policyName}
+                              </div>
+                              {policy.policyArn && (
+                                <div style={{ marginBottom: 8 }}>
+                                  <Text strong>策略 ARN：</Text> {policy.policyArn}
+                                </div>
+                              )}
+                              <div>
+                                <Text strong>策略内容：</Text>
+                                <div style={{ 
+                                  backgroundColor: '#ffffff', 
+                                  padding: '12px', 
+                                  borderRadius: '4px', 
+                                  overflowX: 'auto',
+                                  fontFamily: 'monospace',
+                                  fontSize: '12px',
+                                  marginTop: 8
+                                }}>
+                                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                                    {JSON.stringify(policy.policyDocument, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 8 }}>无策略详情</div>
                       )}
-                    </ul>
-                  </div>
-                  <div>
-                    <Text strong>风险等级：</Text> 
-                    <Tag color={permissions.riskLevel === 'High' ? 'red' : permissions.riskLevel === 'Medium' ? 'orange' : 'green'}>
-                      {permissions.riskLevel}
-                    </Tag>
+                    </div>
+                    <div>
+                      <Text strong>风险等级：</Text> 
+                      <Tag color={permissions.riskLevel === 'High' ? 'red' : permissions.riskLevel === 'Medium' ? 'orange' : 'green'}>
+                        {permissions.riskLevel}
+                      </Tag>
+                    </div>
                   </div>
                 </div>
               )

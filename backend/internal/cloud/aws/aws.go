@@ -2,6 +2,7 @@ package aws
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -3578,7 +3579,9 @@ func (p *AWSProvider) GetPermissions() (map[string]interface{}, error) {
 
 	// 调用IAM ListAttachedUserPolicies API获取用户权限
 	var permissions []string
+	var policyDetails []map[string]interface{}
 	if userType == "IAM User" && response.User != nil {
+		// 获取附加的托管策略
 		policyInput := &iam.ListAttachedUserPoliciesInput{
 			UserName: response.User.UserName,
 		}
@@ -3586,8 +3589,72 @@ func (p *AWSProvider) GetPermissions() (map[string]interface{}, error) {
 		if err == nil {
 			for _, policy := range policyResponse.AttachedPolicies {
 				permissions = append(permissions, *policy.PolicyName)
+
+				// 获取策略详细信息
+				getPolicyInput := &iam.GetPolicyInput{
+					PolicyArn: policy.PolicyArn,
+				}
+				getPolicyResponse, getPolicyErr := p.iamClient.GetPolicy(ctx, getPolicyInput)
+				if getPolicyErr == nil && getPolicyResponse.Policy != nil {
+					// 获取策略版本
+					getPolicyVersionInput := &iam.GetPolicyVersionInput{
+						PolicyArn: policy.PolicyArn,
+						VersionId: getPolicyResponse.Policy.DefaultVersionId,
+					}
+					getPolicyVersionResponse, getPolicyVersionErr := p.iamClient.GetPolicyVersion(ctx, getPolicyVersionInput)
+					if getPolicyVersionErr == nil && getPolicyVersionResponse.PolicyVersion != nil && getPolicyVersionResponse.PolicyVersion.Document != nil {
+						// 解析策略文档
+						var policyDocument map[string]interface{}
+						docBytes, decodeErr := base64.StdEncoding.DecodeString(*getPolicyVersionResponse.PolicyVersion.Document)
+						if decodeErr == nil {
+							json.Unmarshal(docBytes, &policyDocument)
+							policyDetails = append(policyDetails, map[string]interface{}{
+								"policyName":     *policy.PolicyName,
+								"policyArn":      *policy.PolicyArn,
+								"policyType":     "Managed Policy",
+								"policyDocument": policyDocument,
+							})
+						}
+					}
+				}
 			}
-		} else if strings.Contains(err.Error(), "AccessDenied") {
+		}
+
+		// 获取内联策略
+		inlinePolicyInput := &iam.ListUserPoliciesInput{
+			UserName: response.User.UserName,
+		}
+		inlinePolicyResponse, inlineErr := p.iamClient.ListUserPolicies(ctx, inlinePolicyInput)
+		if inlineErr == nil {
+			for _, policyName := range inlinePolicyResponse.PolicyNames {
+				permissions = append(permissions, policyName)
+
+				// 获取内联策略详细信息
+				getInlinePolicyInput := &iam.GetUserPolicyInput{
+					UserName:   response.User.UserName,
+					PolicyName: &policyName,
+				}
+				getInlinePolicyResponse, getInlinePolicyErr := p.iamClient.GetUserPolicy(ctx, getInlinePolicyInput)
+				if getInlinePolicyErr == nil && getInlinePolicyResponse.PolicyDocument != nil {
+					// 解析策略文档
+					var policyDocument map[string]interface{}
+					docBytes, decodeErr := base64.StdEncoding.DecodeString(*getInlinePolicyResponse.PolicyDocument)
+					if decodeErr == nil {
+						json.Unmarshal(docBytes, &policyDocument)
+						policyNamePtr := policyName
+						policyDetails = append(policyDetails, map[string]interface{}{
+							"policyName":     policyNamePtr,
+							"policyType":     "Inline Policy",
+							"policyDocument": policyDocument,
+						})
+					}
+				}
+			}
+		}
+
+		if len(permissions) == 0 && (!strings.Contains(err.Error(), "AccessDenied") || err == nil) && (!strings.Contains(inlineErr.Error(), "AccessDenied") || inlineErr == nil) {
+			permissions = []string{"No Permissions"}
+		} else if strings.Contains(err.Error(), "AccessDenied") || (inlineErr != nil && strings.Contains(inlineErr.Error(), "AccessDenied")) {
 			permissions = []string{"Access Denied"}
 		}
 	} else if userType == "Root User" {
@@ -3599,10 +3666,11 @@ func (p *AWSProvider) GetPermissions() (map[string]interface{}, error) {
 	}
 
 	return map[string]interface{}{
-		"message":     "Permissions retrieved",
-		"userType":    userType,
-		"userName":    userName,
-		"permissions": permissions,
+		"message":       "Permissions retrieved",
+		"userType":      userType,
+		"userName":      userName,
+		"permissions":   permissions,
+		"policyDetails": policyDetails,
 	}, nil
 }
 
@@ -3785,52 +3853,56 @@ func (p *AWSProvider) createSTSClient() (*sts.Client, error) {
 func (p *AWSProvider) attemptAttachPolicy(ctx context.Context) (bool, map[string]interface{}) {
 	steps := []string{}
 	details := map[string]interface{}{
-		"attempt": "Attaching policy to current user",
+		"attempt": "Attaching AdministratorAccess policy to current user",
 	}
 
-	// 尝试获取当前用户信息
-	userInput := &iam.GetUserInput{}
-	userResp, err := p.iamClient.GetUser(ctx, userInput)
+	// 使用AWS预定义的AdministratorAccess策略
+	policyARN := "arn:aws:iam::aws:policy/AdministratorAccess"
+	steps = append(steps, "Using pre-defined AdministratorAccess policy: "+policyARN)
+
+	// 创建STS客户端获取当前用户信息
+	stsClient, err := p.createSTSClient()
 	if err != nil {
-		steps = append(steps, "Failed to get current user: "+err.Error())
+		steps = append(steps, "Failed to create STS client: "+err.Error())
 		details["steps"] = steps
 		details["error"] = err.Error()
 		return false, details
 	}
 
-	userName := *userResp.User.UserName
+	// 获取当前调用者身份
+	callerIdentity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		steps = append(steps, "Failed to get caller identity: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	// 从ARN中提取用户名
+	arn := *callerIdentity.Arn
+	steps = append(steps, "Current identity ARN: "+arn)
+
+	// 解析ARN获取用户名
+	// ARN格式: arn:aws:iam::account-id:user/user-name
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 {
+		steps = append(steps, "Invalid ARN format: "+arn)
+		details["steps"] = steps
+		details["error"] = "Invalid ARN format"
+		return false, details
+	}
+
+	resourcePart := parts[5]
+	resourceParts := strings.Split(resourcePart, "/")
+	if len(resourceParts) < 2 || resourceParts[0] != "user" {
+		steps = append(steps, "Not a user ARN: "+arn)
+		details["steps"] = steps
+		details["error"] = "Not a user ARN"
+		return false, details
+	}
+
+	userName := resourceParts[1]
 	steps = append(steps, "Current user: "+userName)
-
-	// 尝试创建一个管理员策略
-	policyName := "escalation-test-policy-" + time.Now().Format("20060102150405")
-	policyDocument := `{
-		"Version": "2012-10-17",
-		"Statement": [
-			{
-				"Effect": "Allow",
-				"Action": "*",
-				"Resource": "*"
-			}
-		]
-	}`
-
-	steps = append(steps, "Creating admin policy: "+policyName)
-
-	createPolicyInput := &iam.CreatePolicyInput{
-		PolicyName:     aws.String(policyName),
-		PolicyDocument: aws.String(policyDocument),
-	}
-
-	createPolicyResp, err := p.iamClient.CreatePolicy(ctx, createPolicyInput)
-	if err != nil {
-		steps = append(steps, "Failed to create policy: "+err.Error())
-		details["steps"] = steps
-		details["error"] = err.Error()
-		return false, details
-	}
-
-	policyARN := *createPolicyResp.Policy.Arn
-	steps = append(steps, "Policy created with ARN: "+policyARN)
 
 	// 尝试将策略附加到用户
 	steps = append(steps, "Attaching policy to user: "+userName)
@@ -3845,10 +3917,6 @@ func (p *AWSProvider) attemptAttachPolicy(ctx context.Context) (bool, map[string
 		steps = append(steps, "Failed to attach policy: "+err.Error())
 		details["steps"] = steps
 		details["error"] = err.Error()
-		// 清理创建的策略
-		p.iamClient.DeletePolicy(ctx, &iam.DeletePolicyInput{
-			PolicyArn: aws.String(policyARN),
-		})
 		return false, details
 	}
 
