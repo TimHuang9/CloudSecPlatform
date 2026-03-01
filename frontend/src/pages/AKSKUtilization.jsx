@@ -2264,33 +2264,53 @@ const AKSKUtilization = () => {
                 </Button>
                 
                 {Object.keys(permissions).length > 0 ? (
-                  <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
-                    <h3>权限分析结果</h3>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>用户类型：</Text> {permissions.userType || 'Unknown'}
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>权限：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {permissions.permissions && Array.isArray(permissions.permissions) ? (
-                          permissions.permissions.map((perm, index) => (
-                            <div key={index} style={{ marginBottom: '4px' }}>• {perm}</div>
-                          ))
-                        ) : (
-                          <div>暂无权限信息</div>
-                        )}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* 状态卡片 */}
+                    <Card>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <Text strong style={{ fontSize: 18 }}>权限分析结果</Text>
+                        </div>
+                        <Badge 
+                          status={permissions.riskLevel === 'High' ? 'error' : permissions.riskLevel === 'Medium' ? 'warning' : 'success'} 
+                          text={permissions.riskLevel}
+                          style={{ fontSize: 14 }}
+                        />
                       </div>
-                    </div>
-
-                    <div>
-                      <Text strong>风险等级：</Text> 
-                      <Text style={{ 
-                        color: permissions.riskLevel === 'High' ? '#ff4d4f' : 
-                               permissions.riskLevel === 'Medium' ? '#faad14' : '#52c41a' 
-                      }}>
-                        {permissions.riskLevel}
-                      </Text>
-                    </div>
+                    </Card>
+                    
+                    {/* 用户信息卡片 */}
+                    <Card title="用户信息" size="small">
+                      <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+                        <div>
+                          <Text strong>用户类型：</Text>
+                          <div style={{ marginTop: 4, color: '#666' }}>{permissions.userType || 'Unknown'}</div>
+                        </div>
+                        <div>
+                          <Text strong>风险等级：</Text>
+                          <div style={{ marginTop: 4, color: permissions.riskLevel === 'High' ? '#ff4d4f' : permissions.riskLevel === 'Medium' ? '#faad14' : '#52c41a' }}>
+                            {permissions.riskLevel}
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                    
+                    {/* 权限详情卡片 */}
+                    <Card title="权限详情" size="small">
+                      {permissions.permissions && Array.isArray(permissions.permissions) && permissions.permissions.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {permissions.permissions.map((perm, index) => (
+                            <div key={index} style={{ borderLeft: '3px solid #1890ff', paddingLeft: 12, paddingVertical: 4 }}>
+                              {perm}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '20px 0', color: '#999' }}>
+                          暂无权限信息
+                        </div>
+                      )}
+                    </Card>
                   </div>
                 ) : (
                   <div style={{ textAlign: 'center', padding: '40px 0' }}>
@@ -2494,57 +2514,79 @@ const AKSKUtilization = () => {
                 </Button>
                 
                 {privilegeResult && (
-                  <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
-                    <h3>权限提升结果</h3>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>状态：</Text> 
-                      <Text style={{ color: privilegeResult.success ? '#52c41a' : '#ff4d4f' }}>
-                        {privilegeResult.success ? '成功' : '失败'}
-                      </Text>
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>尝试的策略：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.strategies.map((strategy, index) => (
-                          <div key={index} style={{ marginBottom: '4px' }}>• {strategy}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {/* 状态卡片 */}
+                    <Card>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <Text strong style={{ fontSize: 18 }}>权限提升结果</Text>
+                        </div>
+                        <Badge 
+                          status={privilegeResult.success ? 'success' : 'error'} 
+                          text={privilegeResult.success ? '成功' : '失败'}
+                          style={{ fontSize: 14 }}
+                        />
+                      </div>
+                      <div style={{ marginTop: 12 }}>
+                        <Text strong>时间：</Text> {new Date(privilegeResult.timestamp).toLocaleString()}
+                      </div>
+                    </Card>
+                    
+                    {/* 策略概览 */}
+                    <Card title="策略概览" size="small">
+                      <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
+                        <div>
+                          <Text strong>尝试的策略：</Text>
+                          <div style={{ marginTop: 8, color: '#666' }}>{privilegeResult.strategies.length} 个</div>
+                        </div>
+                        <div>
+                          <Text strong>成功的策略：</Text>
+                          <div style={{ marginTop: 8, color: '#52c41a' }}>{privilegeResult.successfulStrategies.length} 个</div>
+                        </div>
+                        <div>
+                          <Text strong>失败的策略：</Text>
+                          <div style={{ marginTop: 8, color: '#ff4d4f' }}>{privilegeResult.failedStrategies.length} 个</div>
+                        </div>
+                      </div>
+                      
+                      {/* 策略详情 */}
+                      <div style={{ marginBottom: 16 }}>
+                        <Text strong>尝试的策略详情：</Text>
+                        <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {privilegeResult.strategies.map((strategy, index) => (
+                            <Badge 
+                              key={index}
+                              color={privilegeResult.successfulStrategies.includes(strategy) ? '#52c41a' : '#ff4d4f'}
+                              text={strategy}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </Card>
+                    
+                    {/* 详细步骤 */}
+                    <Card title="详细执行步骤" size="small">
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {privilegeResult.attempts.map((attempt, index) => (
+                          <div key={index} style={{ borderLeft: '3px solid', borderColor: attempt.status === 'success' ? '#52c41a' : '#ff4d4f', paddingLeft: 12 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <Text strong>策略 {index + 1}: {attempt.strategy}</Text>
+                              <Badge 
+                                status={attempt.status === 'success' ? 'success' : 'error'} 
+                                text={attempt.status === 'success' ? '成功' : '失败'}
+                              />
+                            </div>
+                            {attempt.details?.steps && attempt.details.steps.length > 0 && (
+                              <div style={{ marginLeft: 8, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                {attempt.details.steps.map((step, stepIndex) => (
+                                  <div key={stepIndex} style={{ color: '#666', fontSize: 14 }}>• {step}</div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>成功的策略：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.successfulStrategies.length > 0 ? (
-                          privilegeResult.successfulStrategies.map((strategy, index) => (
-                            <div key={index} style={{ marginBottom: '4px', color: '#52c41a' }}>• {strategy}</div>
-                          ))
-                        ) : (
-                          <div>无</div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>失败的策略：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.failedStrategies.length > 0 ? (
-                          privilegeResult.failedStrategies.map((strategy, index) => (
-                            <div key={index} style={{ marginBottom: '4px', color: '#ff4d4f' }}>• {strategy}</div>
-                          ))
-                        ) : (
-                          <div>无</div>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>提升步骤：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.steps.map((step, index) => (
-                          <div key={index} style={{ marginBottom: '4px' }}>{index + 1}. {step}</div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <Text strong>时间：</Text> {new Date(privilegeResult.timestamp).toLocaleString()}
-                    </div>
+                    </Card>
                   </div>
                 )}
               </div>
