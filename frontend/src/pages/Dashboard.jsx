@@ -228,6 +228,7 @@ const Dashboard = () => {
   const getStatusIcon = (status) => {
     switch (status) {
       case 'success':
+      case 'completed':
         return <RocketOutlined style={{ color: '#ffffff' }} />
       case 'running':
         return <ThunderboltOutlined style={{ color: '#ffffff' }} />
@@ -241,6 +242,7 @@ const Dashboard = () => {
   const getAvatarStyle = (status) => {
     switch (status) {
       case 'success':
+      case 'completed':
         return { backgroundColor: '#52c41a' }
       case 'running':
         return { backgroundColor: '#faad14' }
@@ -255,15 +257,15 @@ const Dashboard = () => {
   const getCloudIcon = (cloudProvider) => {
     switch (cloudProvider) {
       case 'aws':
-        return <AmazonOutlined />
+        return <AmazonOutlined style={{ color: '#FF9900' }} />
       case 'aliyun':
-        return <AliyunOutlined />
+        return <AliyunOutlined style={{ color: '#FF6A00' }} />
       case 'gcp':
-        return <GoogleOutlined />
+        return <GoogleOutlined style={{ color: '#4285F4' }} />
       case 'azure':
-        return <CloudOutlined />
+        return <CloudOutlined style={{ color: '#0078D4' }} />
       default:
-        return <CloudOutlined />
+        return <CloudOutlined style={{ color: '#999999' }} />
     }
   }
 
@@ -273,7 +275,7 @@ const Dashboard = () => {
       case 'enumerate':
         return <AppstoreOutlined />
       case 'analyze':
-        return <LockOutlined />
+        return <CheckCircleOutlined />
       case 'operate':
         return <DatabaseOutlined />
       case 'takeover':
