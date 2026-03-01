@@ -467,7 +467,26 @@ func listTasksHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(200, tasks)
+		// 为每个任务添加凭证信息
+		type TaskWithCredential struct {
+			database.Task
+			CloudProvider string `json:"cloudProvider"`
+			CredentialName string `json:"credentialName"`
+		}
+
+		var tasksWithCredential []TaskWithCredential
+		for _, task := range tasks {
+			var credential database.CloudCredential
+			db.Where("id = ?", task.CredentialID).First(&credential)
+			
+			tasksWithCredential = append(tasksWithCredential, TaskWithCredential{
+				Task:           task,
+				CloudProvider:  credential.CloudProvider,
+				CredentialName: credential.Name,
+			})
+		}
+
+		c.JSON(200, tasksWithCredential)
 	}
 }
 
@@ -482,7 +501,7 @@ func createTaskHandler(db *gorm.DB, redisClient *redis.Client) gin.HandlerFunc {
 		var input struct {
 			CredentialID uint   `json:"credentialId" binding:"required"`
 			TaskType     string `json:"taskType" binding:"required"`
-			Parameters   string `json:"parameters" binding:"required"`
+			Parameters   string `json:"parameters"`
 			Name         string `json:"name" binding:"required"`
 		}
 
@@ -503,8 +522,9 @@ func createTaskHandler(db *gorm.DB, redisClient *redis.Client) gin.HandlerFunc {
 			CredentialID: input.CredentialID,
 			TaskType:     input.TaskType,
 			Status:       "pending",
+			Name:         input.Name,
 			Parameters:   input.Parameters,
-			StartTime:    "",
+			StartTime:    time.Now().Format(time.RFC3339),
 			EndTime:      "",
 		}
 
@@ -705,6 +725,13 @@ func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 创建任务记录参数
+		parameters, _ := json.Marshal(map[string]interface{}{
+			"resource_type": input.ResourceType,
+			"region":        region,
+		})
+
+		startTime := time.Now()
 		// 枚举资源
 		result, err := provider.EnumerateResources(input.ResourceType)
 		if err != nil {
@@ -712,21 +739,17 @@ func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 将结果保存到数据库
-		// 创建任务记录
-		parameters, _ := json.Marshal(map[string]interface{}{
-			"resource_type": input.ResourceType,
-			"region":        region,
-		})
+		endTime := time.Now()
 
 		task := database.Task{
 			UserID:       userID.(uint),
 			CredentialID: input.CredentialID,
 			TaskType:     "enumerate",
 			Status:       "completed",
+			Name:         "资源枚举 - " + input.ResourceType + " - " + credential.Name,
 			Parameters:   string(parameters),
-			StartTime:    time.Now().Format(time.RFC3339),
-			EndTime:      time.Now().Format(time.RFC3339),
+			StartTime:    startTime.Format(time.RFC3339),
+			EndTime:      endTime.Format(time.RFC3339),
 		}
 
 		if err := db.Create(&task).Error; err != nil {
@@ -789,6 +812,12 @@ func analyzePermissionsHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// 创建任务记录参数
+		parameters, _ := json.Marshal(map[string]interface{}{
+			"credential_id": input.CredentialID,
+		})
+
+		startTime := time.Now()
 		// 权限分析
 		result, err := provider.AnalyzePermissions()
 		if err != nil {
@@ -796,20 +825,17 @@ func analyzePermissionsHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 将结果保存到数据库
-		// 创建任务记录
-		parameters, _ := json.Marshal(map[string]interface{}{
-			"credential_id": input.CredentialID,
-		})
+		endTime := time.Now()
 
 		task := database.Task{
 			UserID:       userID.(uint),
 			CredentialID: input.CredentialID,
 			TaskType:     "analyze",
 			Status:       "completed",
+			Name:         "权限分析 - " + credential.Name,
 			Parameters:   string(parameters),
-			StartTime:    time.Now().Format(time.RFC3339),
-			EndTime:      time.Now().Format(time.RFC3339),
+			StartTime:    startTime.Format(time.RFC3339),
+			EndTime:      endTime.Format(time.RFC3339),
 		}
 
 		if err := db.Create(&task).Error; err != nil {
@@ -892,8 +918,10 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			CredentialID: input.CredentialID,
 			TaskType:     "operate",
 			Status:       "running",
+			Name:         "资源操作 - " + input.ResourceType + " - " + input.Action + " - " + credential.Name,
 			Parameters:   string(parameters),
 			StartTime:    time.Now().Format(time.RFC3339),
+			EndTime:      "",
 		}
 
 		if err := db.Create(&task).Error; err != nil {

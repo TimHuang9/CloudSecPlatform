@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react'
-import { Typography, Row, Col, Card, Statistic, Progress, List, Avatar, Badge, Spin, message } from 'antd'
-import { CloudOutlined, KeyOutlined, AppstoreOutlined, BarChartOutlined, UserOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, ThunderboltOutlined, RocketOutlined, AlertOutlined } from '@ant-design/icons'
+import { useDispatch, useSelector } from 'react-redux'
+import { fetchTasks } from '../store/taskSlice'
+import { Typography, Row, Col, Card, Statistic, Progress, List, Avatar, Badge, Spin, message, Tag } from 'antd'
+import { CloudOutlined, KeyOutlined, AppstoreOutlined, BarChartOutlined, UserOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, ThunderboltOutlined, RocketOutlined, AlertOutlined, AmazonOutlined, AliyunOutlined, GoogleOutlined, DatabaseOutlined, LockOutlined, FileOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
 
 const Dashboard = () => {
+  const dispatch = useDispatch()
+  const { tasks, loading } = useSelector(state => state.task)
+  
   // 状态管理
   const [statistics, setStatistics] = useState([
     {
@@ -27,35 +32,14 @@ const Dashboard = () => {
     }
   ])
 
-  const [recentTasks, setRecentTasks] = useState([
-    {
-      id: 1,
-      name: 'AWS S3 存储桶枚举',
-      status: 'success',
-      time: '2024-01-15 14:30'
-    },
-    {
-      id: 2,
-      name: '阿里云 ECS 实例操作',
-      status: 'running',
-      time: '2024-01-15 13:45'
-    },
-    {
-      id: 3,
-      name: 'GCP IAM 权限分析',
-      status: 'failed',
-      time: '2024-01-15 12:20'
-    },
-    {
-      id: 4,
-      name: 'Azure 资源枚举',
-      status: 'success',
-      time: '2024-01-15 11:10'
-    }
-  ])
-
   const [cloudDistribution, setCloudDistribution] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [taskStatistics, setTaskStatistics] = useState({
+    total: 0,
+    success: 0,
+    running: 0,
+    failed: 0,
+    byCloud: {}
+  })
 
   // 获取云平台分布数据
   const fetchCloudDistribution = async () => {
@@ -132,7 +116,72 @@ const Dashboard = () => {
   // 组件加载时获取数据
   useEffect(() => {
     fetchCloudDistribution()
-  }, [])
+    dispatch(fetchTasks())
+  }, [dispatch])
+
+  // 当任务数据变化时更新统计信息
+  useEffect(() => {
+    if (tasks && tasks.length > 0) {
+      // 计算任务总数
+      const total = tasks.length
+      // 计算成功任务数
+      const success = tasks.filter(task => task.status === 'success' || task.status === 'completed').length
+      // 计算运行中任务数
+      const running = tasks.filter(task => task.status === 'running').length
+      // 计算失败任务数
+      const failed = tasks.filter(task => task.status === 'failed').length
+      // 计算成功率
+      const successRate = total > 0 ? Math.round((success / total) * 100) : 0
+      
+      // 按云平台统计任务
+      const byCloud = {}
+      tasks.forEach(task => {
+        // 过滤掉云平台为Unknown的任务
+        const cloud = task.cloudProvider || 'Unknown'
+        if (cloud === 'Unknown') {
+          return
+        }
+        if (!byCloud[cloud]) {
+          byCloud[cloud] = {
+            total: 0,
+            success: 0,
+            running: 0,
+            failed: 0
+          }
+        }
+        byCloud[cloud].total++
+        if (task.status === 'success' || task.status === 'completed') {
+          byCloud[cloud].success++
+        } else if (task.status === 'running') {
+          byCloud[cloud].running++
+        } else if (task.status === 'failed') {
+          byCloud[cloud].failed++
+        }
+      })
+      
+      // 更新统计数据
+      setStatistics(prev => [
+        prev[0],
+        {
+          ...prev[1],
+          value: total
+        },
+        {
+          ...prev[2],
+          value: `${successRate}%`
+        }
+      ])
+      
+      // 更新任务统计
+      setTaskStatistics({
+        total,
+        success,
+        running,
+        failed,
+        byCloud
+      })
+    }
+  }, [tasks])
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -160,6 +209,64 @@ const Dashboard = () => {
     }
   }
 
+  // 获取云平台图标
+  const getCloudIcon = (cloudProvider) => {
+    switch (cloudProvider) {
+      case 'aws':
+        return <AmazonOutlined />
+      case 'aliyun':
+        return <AliyunOutlined />
+      case 'gcp':
+        return <GoogleOutlined />
+      case 'azure':
+        return <CloudOutlined />
+      default:
+        return <CloudOutlined />
+    }
+  }
+
+  // 获取任务类型图标
+  const getTaskTypeIcon = (taskType) => {
+    switch (taskType) {
+      case 'enumerate':
+        return <AppstoreOutlined />
+      case 'analyze':
+        return <LockOutlined />
+      case 'operate':
+        return <DatabaseOutlined />
+      case 'takeover':
+        return <FileOutlined />
+      default:
+        return <AppstoreOutlined />
+    }
+  }
+
+  // 获取任务类型文本
+  const getTaskTypeText = (taskType) => {
+    switch (taskType) {
+      case 'enumerate':
+        return '资源枚举'
+      case 'analyze':
+        return '权限分析'
+      case 'operate':
+        return '资源操作'
+      case 'takeover':
+        return '平台接管'
+      default:
+        return taskType
+    }
+  }
+
+  // 解析任务参数，获取资源类型
+  const getResourceType = (parameters) => {
+    try {
+      const params = JSON.parse(parameters)
+      return params.resource_type || ''
+    } catch (error) {
+      return ''
+    }
+  }
+
   return (
     <div>
       <Title level={2}>仪表盘</Title>
@@ -181,48 +288,95 @@ const Dashboard = () => {
       <Row gutter={16}>
         <Col span={12}>
           <Card title="任务执行统计" style={{ marginBottom: 24 }}>
-            <div style={{ marginBottom: 24 }}>
-              <Text>总体执行进度</Text>
-              <Progress percent={65} status="active" />
-            </div>
-            <div style={{ marginBottom: 24 }}>
-              <Text>AWS 任务</Text>
-              <Progress percent={80} status="success" />
-            </div>
-            <div style={{ marginBottom: 24 }}>
-              <Text>阿里云任务</Text>
-              <Progress percent={50} status="active" />
-            </div>
-            <div>
-              <Text>GCP 任务</Text>
-              <Progress percent={30} status="exception" />
-            </div>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Spin size="large" />
+              </div>
+            ) : taskStatistics.total > 0 ? (
+              <>
+                <div style={{ marginBottom: 24 }}>
+                  <Text>总体执行进度</Text>
+                  <Progress 
+                    percent={Math.round((taskStatistics.success / taskStatistics.total) * 100)} 
+                    status={taskStatistics.running > 0 ? "active" : taskStatistics.success === taskStatistics.total ? "success" : "exception"} 
+                  />
+                </div>
+                {Object.entries(taskStatistics.byCloud).map(([cloud, stats]) => (
+                  <div key={cloud} style={{ marginBottom: 24 }}>
+                    <Text>{cloud} 任务</Text>
+                    <Progress 
+                      percent={Math.round((stats.success / stats.total) * 100)} 
+                      status={stats.running > 0 ? "active" : stats.success === stats.total ? "success" : "exception"} 
+                    />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Text>暂无任务数据</Text>
+              </div>
+            )}
           </Card>
         </Col>
         
         <Col span={12}>
           <Card title="最近任务" style={{ marginBottom: 24 }}>
-            <List
-              itemLayout="horizontal"
-              dataSource={recentTasks}
-              renderItem={item => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={<Avatar icon={getStatusIcon(item.status)} style={getAvatarStyle(item.status)} />}
-                    title={
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>{item.name}</span>
-                        <Badge 
-                          status={item.status === 'success' ? 'success' : item.status === 'running' ? 'warning' : 'default'}
-                          text={item.status === 'success' ? '成功' : item.status === 'running' ? '运行中' : '失败'}
-                        />
-                      </div>
-                    }
-                    description={item.time}
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Spin size="large" />
+              </div>
+            ) : tasks && tasks.length > 0 ? (
+              <List
+                    itemLayout="horizontal"
+                    dataSource={tasks.slice(0, 4)} // 显示最近的4个任务
+                    renderItem={item => {
+                      const resourceType = getResourceType(item.parameters)
+                      return (
+                        <List.Item key={item.id}>
+                          <List.Item.Meta
+                            avatar={<Avatar icon={getTaskTypeIcon(item.taskType)} style={getAvatarStyle(item.status)} />}
+                            title={
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                  <span>{item.name || '未命名任务'}</span>
+                                  <Tag icon={getTaskTypeIcon(item.taskType)} color="orange">
+                                    {getTaskTypeText(item.taskType)}
+                                  </Tag>
+                                  {item.cloudProvider && (
+                                    <Tag icon={getCloudIcon(item.cloudProvider)} color="blue">
+                                      {item.cloudProvider.toUpperCase()}
+                                    </Tag>
+                                  )}
+                                  {resourceType && (
+                                    <Tag color="green">
+                                      {resourceType}
+                                    </Tag>
+                                  )}
+                                </div>
+                                <Badge 
+                                  status={(item.status === 'success' || item.status === 'completed') ? 'success' : item.status === 'running' ? 'processing' : 'error'}
+                                  text={(item.status === 'success' || item.status === 'completed') ? '成功' : item.status === 'running' ? '运行中' : '失败'}
+                                />
+                              </div>
+                            }
+                            description={
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <span>{new Date(item.startTime).toLocaleString()}</span>
+                                {item.credentialName && (
+                                  <span>凭证: {item.credentialName}</span>
+                                )}
+                              </div>
+                            }
+                          />
+                        </List.Item>
+                      )
+                    }}
                   />
-                </List.Item>
-              )}
-            />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Text>暂无任务数据</Text>
+              </div>
+            )}
           </Card>
         </Col>
       </Row>

@@ -92,6 +92,7 @@ type Task struct {
 	CredentialID uint   `json:"credentialId"`
 	TaskType     string `gorm:"size:50" json:"taskType"`
 	Status       string `gorm:"size:50" json:"status"`
+	Name         string `gorm:"size:255" json:"name"`
 	Parameters   string `gorm:"type:jsonb" json:"parameters"`
 	StartTime    string `json:"startTime"`
 	EndTime      string `json:"endTime"`

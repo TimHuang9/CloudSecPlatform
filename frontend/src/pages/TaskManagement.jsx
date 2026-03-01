@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchTasks, createTask, fetchTaskDetails, fetchTaskResults, deleteTask, deleteAllTasks, clearError, clearCurrentTask } from '../store/taskSlice'
+import { fetchCredentials } from '../store/credentialSlice'
 import { Typography, Card, Button, Table, Modal, Form, Select, message, Alert, Tabs, Descriptions, List, Badge } from 'antd'
 import { PlusOutlined, PlayCircleOutlined, StopOutlined, DeleteOutlined, AppstoreOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
@@ -11,6 +12,7 @@ const { TabPane } = Tabs
 const TaskManagement = () => {
   const dispatch = useDispatch()
   const { tasks, currentTask, taskResults, loading, error } = useSelector(state => state.task)
+  const { credentials } = useSelector(state => state.credential)
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [selectedTask, setSelectedTask] = useState(null)
   const [isDetailVisible, setIsDetailVisible] = useState(false)
@@ -18,47 +20,8 @@ const TaskManagement = () => {
 
   useEffect(() => {
     dispatch(fetchTasks())
+    dispatch(fetchCredentials())
   }, [dispatch])
-
-  // 模拟数据
-  const mockTasks = [
-    {
-      id: 1,
-      name: 'AWS S3 存储桶枚举',
-      credentialId: 1,
-      taskType: 'enumerate',
-      status: 'success',
-      startTime: '2024-01-15 14:30:00',
-      endTime: '2024-01-15 14:35:00'
-    },
-    {
-      id: 2,
-      name: '阿里云 ECS 实例操作',
-      credentialId: 2,
-      taskType: 'operate',
-      status: 'running',
-      startTime: '2024-01-15 13:45:00',
-      endTime: ''
-    },
-    {
-      id: 3,
-      name: 'GCP IAM 权限分析',
-      credentialId: 3,
-      taskType: 'escalate',
-      status: 'failed',
-      startTime: '2024-01-15 12:20:00',
-      endTime: '2024-01-15 12:25:00'
-    },
-    {
-      id: 4,
-      name: 'Azure 资源枚举',
-      credentialId: 4,
-      taskType: 'enumerate',
-      status: 'success',
-      startTime: '2024-01-15 11:10:00',
-      endTime: '2024-01-15 11:18:00'
-    }
-  ]
 
   const getStatusIcon = (status) => {
     switch (status) {
@@ -173,10 +136,14 @@ const TaskManagement = () => {
   }
 
   const handleRunTask = (id) => {
+    // 调用API运行任务
+    // 实际应用中应该调用相应的API
     message.success(`开始运行任务 ${id}`)
   }
 
   const handleStopTask = (id) => {
+    // 调用API停止任务
+    // 实际应用中应该调用相应的API
     message.success(`停止任务 ${id}`)
   }
 
@@ -302,9 +269,11 @@ const TaskManagement = () => {
             rules={[{ required: true, message: '请选择凭证' }]}
           >
             <Select placeholder="选择凭证">
-              <Option value="1">AWS Production</Option>
-              <Option value="2">阿里云测试</Option>
-              <Option value="3">GCP Dev</Option>
+              {credentials.map(credential => (
+                <Option key={credential.id} value={credential.id}>
+                  {credential.name} ({credential.cloud_provider})
+                </Option>
+              ))}
             </Select>
           </Form.Item>
           <Form.Item
@@ -360,90 +329,89 @@ const TaskManagement = () => {
               </Descriptions>
             </TabPane>
             <TabPane tab="执行结果" key="results">
-              <List
-                dataSource={taskResults.length > 0 ? taskResults : [
-                  {
-                    id: 1,
-                    result: '{"buckets": ["bucket1", "bucket2", "bucket3"]}',
-                    error: '',
-                    timestamp: '2024-01-15 14:35:00'
-                  }
-                ]}
-                renderItem={item => {
-                  // 格式化时间
-                  const formatTime = (timestamp) => {
-                    if (!timestamp) return 'N/A';
-                    try {
-                      return new Date(timestamp).toLocaleString('zh-CN');
-                    } catch (e) {
-                      return timestamp;
-                    }
-                  };
-                  
-                  // 美化JSON显示，特别处理标签信息
-                  const formatJSON = (jsonStr) => {
-                    if (!jsonStr) return '{}';
-                    try {
-                      const obj = JSON.parse(jsonStr);
-                      // 处理资源标签，使其更易读
-                      const processTags = (data) => {
-                        if (Array.isArray(data)) {
-                          return data.map(item => processTags(item));
-                        } else if (typeof data === 'object' && data !== null) {
-                          const processed = {};
-                          for (const key in data) {
-                            if (key === 'tags' && typeof data[key] === 'object') {
-                              // 将标签对象转换为字符串数组，更易读
-                              processed[key] = Object.entries(data[key]).map(([k, v]) => `${k}: ${v}`);
-                            } else if (typeof data[key] === 'object' && data[key] !== null) {
-                              processed[key] = processTags(data[key]);
-                            } else {
-                              processed[key] = data[key];
+              {taskResults.length > 0 ? (
+                <List
+                  dataSource={taskResults}
+                  renderItem={item => {
+                    // 格式化时间
+                    const formatTime = (timestamp) => {
+                      if (!timestamp) return 'N/A';
+                      try {
+                        return new Date(timestamp).toLocaleString('zh-CN');
+                      } catch (e) {
+                        return timestamp;
+                      }
+                    };
+                    
+                    // 美化JSON显示，特别处理标签信息
+                    const formatJSON = (jsonStr) => {
+                      if (!jsonStr) return '{}';
+                      try {
+                        const obj = JSON.parse(jsonStr);
+                        // 处理资源标签，使其更易读
+                        const processTags = (data) => {
+                          if (Array.isArray(data)) {
+                            return data.map(item => processTags(item));
+                          } else if (typeof data === 'object' && data !== null) {
+                            const processed = {};
+                            for (const key in data) {
+                              if (key === 'tags' && typeof data[key] === 'object') {
+                                // 将标签对象转换为字符串数组，更易读
+                                processed[key] = Object.entries(data[key]).map(([k, v]) => `${k}: ${v}`);
+                              } else if (typeof data[key] === 'object' && data[key] !== null) {
+                                processed[key] = processTags(data[key]);
+                              } else {
+                                processed[key] = data[key];
+                              }
                             }
+                            return processed;
                           }
-                          return processed;
-                        }
-                        return data;
-                      };
-                      const processedObj = processTags(obj);
-                      return JSON.stringify(processedObj, null, 2);
-                    } catch (e) {
-                      return jsonStr;
-                    }
-                  };
-                  
-                  return (
-                    <List.Item>
-                      <List.Item.Meta
-                        title={formatTime(item.timestamp)}
-                        description={
-                          <div>
-                            {item.error ? (
-                              <Text type="danger">错误: {item.error}</Text>
-                            ) : (
-                              <div>
-                                <Text>结果:</Text>
-                                <div style={{ 
-                                  marginTop: 8, 
-                                  padding: 12, 
-                                  backgroundColor: '#f5f5f5', 
-                                  borderRadius: 4, 
-                                  fontFamily: 'monospace', 
-                                  fontSize: 12, 
-                                  whiteSpace: 'pre-wrap',
-                                  overflowX: 'auto'
-                                }}>
-                                  {formatJSON(item.result)}
+                          return data;
+                        };
+                        const processedObj = processTags(obj);
+                        return JSON.stringify(processedObj, null, 2);
+                      } catch (e) {
+                        return jsonStr;
+                      }
+                    };
+                    
+                    return (
+                      <List.Item>
+                        <List.Item.Meta
+                          title={formatTime(item.timestamp)}
+                          description={
+                            <div>
+                              {item.error ? (
+                                <Text type="danger">错误: {item.error}</Text>
+                              ) : (
+                                <div>
+                                  <Text>结果:</Text>
+                                  <div style={{ 
+                                    marginTop: 8, 
+                                    padding: 12, 
+                                    backgroundColor: '#f5f5f5', 
+                                    borderRadius: 4, 
+                                    fontFamily: 'monospace', 
+                                    fontSize: 12, 
+                                    whiteSpace: 'pre-wrap',
+                                    overflowX: 'auto'
+                                  }}>
+                                    {formatJSON(item.result)}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                          </div>
-                        }
-                      />
-                    </List.Item>
-                  );
-                }}
-              />
+                              )}
+                            </div>
+                          }
+                        />
+                      </List.Item>
+                    );
+                  }}
+                />
+              ) : (
+                <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <Text type="secondary">暂无执行结果</Text>
+                </div>
+              )}
             </TabPane>
           </Tabs>
         )}

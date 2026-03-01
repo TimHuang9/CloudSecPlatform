@@ -1757,17 +1757,28 @@ const AKSKUtilization = () => {
       return
     }
 
+    // 检查是否已经获取了权限信息
+    if (Object.keys(permissions).length === 0) {
+      message.warning('请先获取权限信息，然后再生成提权路径')
+      return
+    }
+
     setLoading(true)
     try {
       // 调用真实 API
-      const response = await api.post('/cloud/escalate', {
+      const response = await api.post('/cloud/analyze', {
         credential_id: selectedCredential.id
       })
       
       // 处理响应数据
       if (response.data && response.data.result) {
+        // 转换后端返回的数据格式为前端期望的格式
+        const result = response.data.result
         setPrivilegeResult({
-          ...response.data.result,
+          success: true,
+          currentPermissions: result.permissions || [],
+          escalatedPermissions: result.permissions || [],
+          steps: result.potentialEscalation || [],
           timestamp: new Date().toISOString()
         })
         message.success('权限提升成功')
