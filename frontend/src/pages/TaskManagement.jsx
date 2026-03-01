@@ -83,6 +83,8 @@ const TaskManagement = () => {
         return '资源操作'
       case 'takeover':
         return '平台接管'
+      case 'analyze':
+        return '权限分析'
       default:
         return type
     }
@@ -216,6 +218,8 @@ const TaskManagement = () => {
   const handleSubmit = (values) => {
     // 从values中删除parameters字段（如果存在）
     const { parameters, ...taskData } = values
+    // 将credentialId转换为数字类型
+    taskData.credentialId = parseInt(taskData.credentialId)
     dispatch(createTask(taskData))
     setIsModalVisible(false)
   }
@@ -311,6 +315,7 @@ const TaskManagement = () => {
             <Select placeholder="选择任务类型">
               <Option value="enumerate">资源枚举</Option>
               <Option value="escalate">权限提升</Option>
+              <Option value="analyze">权限分析</Option>
               <Option value="operate">资源操作</Option>
               <Option value="takeover">平台接管</Option>
             </Select>
@@ -375,12 +380,33 @@ const TaskManagement = () => {
                     }
                   };
                   
-                  // 美化JSON显示
+                  // 美化JSON显示，特别处理标签信息
                   const formatJSON = (jsonStr) => {
                     if (!jsonStr) return '{}';
                     try {
                       const obj = JSON.parse(jsonStr);
-                      return JSON.stringify(obj, null, 2);
+                      // 处理资源标签，使其更易读
+                      const processTags = (data) => {
+                        if (Array.isArray(data)) {
+                          return data.map(item => processTags(item));
+                        } else if (typeof data === 'object' && data !== null) {
+                          const processed = {};
+                          for (const key in data) {
+                            if (key === 'tags' && typeof data[key] === 'object') {
+                              // 将标签对象转换为字符串数组，更易读
+                              processed[key] = Object.entries(data[key]).map(([k, v]) => `${k}: ${v}`);
+                            } else if (typeof data[key] === 'object' && data[key] !== null) {
+                              processed[key] = processTags(data[key]);
+                            } else {
+                              processed[key] = data[key];
+                            }
+                          }
+                          return processed;
+                        }
+                        return data;
+                      };
+                      const processedObj = processTags(obj);
+                      return JSON.stringify(processedObj, null, 2);
                     } catch (e) {
                       return jsonStr;
                     }
