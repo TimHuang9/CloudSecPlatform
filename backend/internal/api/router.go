@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -99,6 +100,11 @@ func authMiddleware(cfg *config.Config) gin.HandlerFunc {
 			c.JSON(401, gin.H{"error": "Authorization header required"})
 			c.Abort()
 			return
+		}
+
+		// 移除Bearer前缀
+		if strings.HasPrefix(tokenString, "Bearer ") {
+			tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 		}
 
 		// 验证token
@@ -471,7 +477,7 @@ func listTasksHandler(db *gorm.DB) gin.HandlerFunc {
 		// 为每个任务添加凭证信息
 		type TaskWithCredential struct {
 			database.Task
-			CloudProvider string `json:"cloudProvider"`
+			CloudProvider  string `json:"cloudProvider"`
 			CredentialName string `json:"credentialName"`
 		}
 
@@ -479,7 +485,7 @@ func listTasksHandler(db *gorm.DB) gin.HandlerFunc {
 		for _, task := range tasks {
 			var credential database.CloudCredential
 			db.Where("id = ?", task.CredentialID).First(&credential)
-			
+
 			tasksWithCredential = append(tasksWithCredential, TaskWithCredential{
 				Task:           task,
 				CloudProvider:  credential.CloudProvider,
@@ -812,6 +818,10 @@ func analyzePermissionsHandler(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(500, gin.H{"error": "Failed to create cloud provider: " + err.Error()})
 			return
 		}
+		if provider == nil {
+			c.JSON(500, gin.H{"error": "Failed to create cloud provider: invalid provider type"})
+			return
+		}
 
 		// 创建任务记录参数
 		parameters, _ := json.Marshal(map[string]interface{}{
@@ -988,76 +998,93 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// 为EC2命令执行准备任务记录
-	var taskID uint
-	if input.ResourceType == "ec2" && input.Action == "execute_command" {
-		// 将参数保存到数据库
-		// 创建任务记录
-		parameters, _ := json.Marshal(map[string]interface{}{
-			"resource_type": input.ResourceType,
-			"action":        input.Action,
-			"resource_id":   input.ResourceID,
-			"params":        input.Params,
-		})
+		var taskID uint
+		if input.ResourceType == "ec2" && input.Action == "execute_command" {
+			// 将参数保存到数据库
+			// 创建任务记录
+			parameters, _ := json.Marshal(map[string]interface{}{
+				"resource_type": input.ResourceType,
+				"action":        input.Action,
+				"resource_id":   input.ResourceID,
+				"params":        input.Params,
+			})
 
-		task := database.Task{
-			UserID:       userID.(uint),
-			CredentialID: input.CredentialID,
-			TaskType:     "operate",
-			Status:       "running",
-			Name:         "资源操作 - " + input.ResourceType + " - " + input.Action + " - " + credential.Name,
-			Parameters:   string(parameters),
-			StartTime:    time.Now().Format(time.RFC3339),
-			EndTime:      "",
-		}
+			task := database.Task{
+				UserID:       userID.(uint),
+				CredentialID: input.CredentialID,
+				TaskType:     "operate",
+				Status:       "running",
+				Name:         "资源操作 - " + input.ResourceType + " - " + input.Action + " - " + credential.Name,
+				Parameters:   string(parameters),
+				StartTime:    time.Now().Format(time.RFC3339),
+				EndTime:      "",
+			}
 
-		if err := db.Create(&task).Error; err != nil {
-			// 记录错误但不影响返回结果
-			fmt.Printf("Failed to create task: %v\n", err)
-		} else {
-			taskID = task.ID
-		}
-	}
-
-	// 资源操作
-	result, err := provider.OperateResource(input.ResourceType, input.Action, input.ResourceID, input.Params)
-
-	// 为EC2命令执行更新任务记录
-	if input.ResourceType == "ec2" && input.Action == "execute_command" && taskID > 0 {
-		// 更新任务状态
-		status := "completed"
-		errorMessage := ""
-		if err != nil {
-			status = "failed"
-			errorMessage = err.Error()
-		}
-
-		task := database.Task{}
-		if err := db.First(&task, taskID).Error; err == nil {
-			task.Status = status
-			task.EndTime = time.Now().Format(time.RFC3339)
-			if err := db.Save(&task).Error; err != nil {
-				fmt.Printf("Failed to update task: %v\n", err)
+			if err := db.Create(&task).Error; err != nil {
+				// 记录错误但不影响返回结果
+				fmt.Printf("Failed to create task: %v\n", err)
+			} else {
+				taskID = task.ID
 			}
 		}
 
-		// 创建任务结果记录
-		resultJSON, _ := json.Marshal(result)
-		taskResult := database.TaskResult{
-			TaskID:    taskID,
-			Result:    string(resultJSON),
-			Error:     errorMessage,
-			Timestamp: time.Now().Format(time.RFC3339),
+		// 资源操作
+		result, err := provider.OperateResource(input.ResourceType, input.Action, input.ResourceID, input.Params)
+
+		// 为EC2命令执行更新任务记录
+		if input.ResourceType == "ec2" && input.Action == "execute_command" && taskID > 0 {
+			// 更新任务状态
+			status := "completed"
+			errorMessage := ""
+			if err != nil {
+				status = "failed"
+				errorMessage = err.Error()
+			}
+
+			task := database.Task{}
+			if err := db.First(&task, taskID).Error; err == nil {
+				task.Status = status
+				task.EndTime = time.Now().Format(time.RFC3339)
+				if err := db.Save(&task).Error; err != nil {
+					fmt.Printf("Failed to update task: %v\n", err)
+				}
+			}
+
+			// 创建任务结果记录
+			resultJSON, _ := json.Marshal(result)
+			taskResult := database.TaskResult{
+				TaskID:    taskID,
+				Result:    string(resultJSON),
+				Error:     errorMessage,
+				Timestamp: time.Now().Format(time.RFC3339),
+			}
+
+			if err := db.Create(&taskResult).Error; err != nil {
+				// 记录错误但不影响返回结果
+				fmt.Printf("Failed to create task result: %v\n", err)
+			}
 		}
 
-		if err := db.Create(&taskResult).Error; err != nil {
-			// 记录错误但不影响返回结果
-			fmt.Printf("Failed to create task result: %v\n", err)
+		if err != nil {
+			// 检查是否是EC2命令执行错误，如果是，返回result（包含executionSteps）
+			if input.ResourceType == "ec2" && input.Action == "execute_command" && result != nil {
+				c.JSON(200, gin.H{
+					"message":       "Resource operation completed",
+					"credential":    credential.Name,
+					"resource_type": input.ResourceType,
+					"action":        input.Action,
+					"resource_id":   input.ResourceID,
+					"result":        result,
+					"task_id":       taskID,
+				})
+				return
+			}
+			c.JSON(500, gin.H{"error": "Failed to operate resource: " + err.Error(), "task_id": taskID})
+			return
 		}
-	}
 
-	if err != nil {
-		// 检查是否是EC2命令执行错误，如果是，返回result（包含executionSteps）
-		if input.ResourceType == "ec2" && input.Action == "execute_command" && result != nil {
+		// 添加任务ID到响应
+		if input.ResourceType == "ec2" && input.Action == "execute_command" {
 			c.JSON(200, gin.H{
 				"message":       "Resource operation completed",
 				"credential":    credential.Name,
@@ -1069,12 +1096,7 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			})
 			return
 		}
-		c.JSON(500, gin.H{"error": "Failed to operate resource: " + err.Error(), "task_id": taskID})
-		return
-	}
 
-	// 添加任务ID到响应
-	if input.ResourceType == "ec2" && input.Action == "execute_command" {
 		c.JSON(200, gin.H{
 			"message":       "Resource operation completed",
 			"credential":    credential.Name,
@@ -1082,18 +1104,6 @@ func operateResourceHandler(db *gorm.DB) gin.HandlerFunc {
 			"action":        input.Action,
 			"resource_id":   input.ResourceID,
 			"result":        result,
-			"task_id":       taskID,
-		})
-		return
-	}
-
-	c.JSON(200, gin.H{
-		"message":       "Resource operation completed",
-		"credential":    credential.Name,
-		"resource_type": input.ResourceType,
-		"action":        input.Action,
-		"resource_id":   input.ResourceID,
-		"result":        result,
 		})
 	}
 }
@@ -1177,19 +1187,19 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 				"message":    "No enumeration task found",
 				"credential": credential.Name,
 				"result": map[string]interface{}{
-					"instances":     []interface{}{},
-					"buckets":       []interface{}{},
-					"roles":         []interface{}{},
-					"users":         []interface{}{},
-					"vpcs":          []interface{}{},
-					"routeTables":   []interface{}{},
-					"elbs":          []interface{}{},
-					"eksClusters":   []interface{}{},
-					"kmsKeys":       []interface{}{},
-					"rdsInstances":  []interface{}{},
+					"instances":    []interface{}{},
+					"buckets":      []interface{}{},
+					"roles":        []interface{}{},
+					"users":        []interface{}{},
+					"vpcs":         []interface{}{},
+					"routeTables":  []interface{}{},
+					"elbs":         []interface{}{},
+					"eksClusters":  []interface{}{},
+					"kmsKeys":      []interface{}{},
+					"rdsInstances": []interface{}{},
 				},
-				"task_id":    0,
-				"timestamp":  "",
+				"task_id":   0,
+				"timestamp": "",
 			})
 			return
 		}
@@ -1202,19 +1212,19 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 				"message":    "Task result not found",
 				"credential": credential.Name,
 				"result": map[string]interface{}{
-					"instances":     []interface{}{},
-					"buckets":       []interface{}{},
-					"roles":         []interface{}{},
-					"users":         []interface{}{},
-					"vpcs":          []interface{}{},
-					"routeTables":   []interface{}{},
-					"elbs":          []interface{}{},
-					"eksClusters":   []interface{}{},
-					"kmsKeys":       []interface{}{},
-					"rdsInstances":  []interface{}{},
+					"instances":    []interface{}{},
+					"buckets":      []interface{}{},
+					"roles":        []interface{}{},
+					"users":        []interface{}{},
+					"vpcs":         []interface{}{},
+					"routeTables":  []interface{}{},
+					"elbs":         []interface{}{},
+					"eksClusters":  []interface{}{},
+					"kmsKeys":      []interface{}{},
+					"rdsInstances": []interface{}{},
 				},
-				"task_id":    task.ID,
-				"timestamp":  task.EndTime,
+				"task_id":   task.ID,
+				"timestamp": task.EndTime,
 			})
 			return
 		}
@@ -1227,19 +1237,19 @@ func getResourcesFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 				"message":    "Failed to parse task result",
 				"credential": credential.Name,
 				"result": map[string]interface{}{
-					"instances":     []interface{}{},
-					"buckets":       []interface{}{},
-					"roles":         []interface{}{},
-					"users":         []interface{}{},
-					"vpcs":          []interface{}{},
-					"routeTables":   []interface{}{},
-					"elbs":          []interface{}{},
-					"eksClusters":   []interface{}{},
-					"kmsKeys":       []interface{}{},
-					"rdsInstances":  []interface{}{},
+					"instances":    []interface{}{},
+					"buckets":      []interface{}{},
+					"roles":        []interface{}{},
+					"users":        []interface{}{},
+					"vpcs":         []interface{}{},
+					"routeTables":  []interface{}{},
+					"elbs":         []interface{}{},
+					"eksClusters":  []interface{}{},
+					"kmsKeys":      []interface{}{},
+					"rdsInstances": []interface{}{},
 				},
-				"task_id":    task.ID,
-				"timestamp":  task.EndTime,
+				"task_id":   task.ID,
+				"timestamp": task.EndTime,
 			})
 			return
 		}
@@ -1279,12 +1289,12 @@ func getPermissionsFromDatabaseHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 查找最新的权限提升任务
+		// 查找最新的权限分析任务
 		var task database.Task
-		if result := db.Where("user_id = ? AND credential_id = ? AND task_type = ? AND status = ?", userID, input.CredentialID, "escalate", "completed").Order("end_time DESC").First(&task); result.Error != nil {
-			// 找不到权限提升任务，返回空权限结构
+		if result := db.Where("user_id = ? AND credential_id = ? AND task_type = ? AND status = ?", userID, input.CredentialID, "analyze", "completed").Order("end_time DESC").First(&task); result.Error != nil {
+			// 找不到权限分析任务，返回空权限结构
 			c.JSON(200, gin.H{
-				"message":    "No escalation task found",
+				"message":    "No analysis task found",
 				"credential": credential.Name,
 				"result":     nil,
 				"task_id":    0,

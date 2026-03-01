@@ -37,11 +37,11 @@ type CloudProvider interface {
 // NewCloudProvider 创建云平台实例
 func NewCloudProvider(providerType, accessKey, secretKey, region string) (CloudProvider, error) {
 	switch providerType {
-	case "AWS":
+	case "AWS", "aws":
 		return aws.NewAWSProvider(accessKey, secretKey, region)
-	case "阿里云":
+	case "阿里云", "aliyun":
 		return aliyun.NewAliyunProvider(accessKey, secretKey, region)
-	case "GCP":
+	case "GCP", "gcp":
 		return gcp.NewGCPProvider(accessKey, secretKey, region)
 	// case "Azure":
 	// 	return azure.NewAzureProvider(accessKey, secretKey, region)

@@ -29,6 +29,12 @@ const Dashboard = () => {
       value: '0%',
       icon: <CheckCircleOutlined style={{ color: '#faad14' }} />,
       color: '#faad14'
+    },
+    {
+      title: '总资源数量',
+      value: 0,
+      icon: <DatabaseOutlined style={{ color: '#722ed1' }} />,
+      color: '#722ed1'
     }
   ])
 
@@ -88,6 +94,23 @@ const Dashboard = () => {
 
       setCloudDistribution(distribution)
 
+      // 获取总资源数量
+      let totalResources = 0
+      try {
+        const resourceStatsResponse = await fetch('http://localhost:8080/api/analysis/resource-stats', {
+          headers: {
+            'Authorization': token
+          }
+        })
+        
+        if (resourceStatsResponse.ok) {
+          const resourceStats = await resourceStatsResponse.json()
+          totalResources = resourceStats.total || 0
+        }
+      } catch (error) {
+        console.error('Error fetching resource stats:', error)
+      }
+
       // 更新统计数据
       setStatistics(prev => [
         {
@@ -95,7 +118,11 @@ const Dashboard = () => {
           value: total
         },
         prev[1],
-        prev[2]
+        prev[2],
+        {
+          ...prev[3],
+          value: totalResources
+        }
       ])
     } catch (error) {
       console.error('Error fetching cloud distribution:', error)
@@ -107,6 +134,20 @@ const Dashboard = () => {
         { name: 'GCP', count: 2, percentage: '17%' },
         { name: 'Azure', count: 1, percentage: '8%' },
         { name: '腾讯云', count: 1, percentage: '8%' }
+      ])
+      
+      // 使用默认资源数量
+      setStatistics(prev => [
+        {
+          ...prev[0],
+          value: 12
+        },
+        prev[1],
+        prev[2],
+        {
+          ...prev[3],
+          value: 156
+        }
       ])
     } finally {
       setLoading(false)
@@ -169,7 +210,8 @@ const Dashboard = () => {
         {
           ...prev[2],
           value: `${successRate}%`
-        }
+        },
+        prev[3]
       ])
       
       // 更新任务统计
@@ -322,8 +364,35 @@ const Dashboard = () => {
                 ))}
               </>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <Text>暂无任务数据</Text>
+              <div style={{ padding: '40px 0' }}>
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text>总体执行进度</Text>
+                    <Text>总数: 0 | 成功: 0 | 失败: 0 | 成功率: 0%</Text>
+                  </div>
+                  <Progress percent={0} status="exception" />
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text>AWS 任务</Text>
+                    <Text>总数: 0 | 成功: 0 | 失败: 0 | 成功率: 0%</Text>
+                  </div>
+                  <Progress percent={0} status="exception" />
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text>阿里云 任务</Text>
+                    <Text>总数: 0 | 成功: 0 | 失败: 0 | 成功率: 0%</Text>
+                  </div>
+                  <Progress percent={0} status="exception" />
+                </div>
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text>GCP 任务</Text>
+                    <Text>总数: 0 | 成功: 0 | 失败: 0 | 成功率: 0%</Text>
+                  </div>
+                  <Progress percent={0} status="exception" />
+                </div>
               </div>
             )}
           </Card>

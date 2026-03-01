@@ -2440,6 +2440,7 @@ func (p *AWSProvider) AnalyzePermissions() (map[string]interface{}, error) {
 	potentialEscalation := []string{}
 	riskLevel := "Low"
 	userARN := ""
+	policyDetails := []map[string]interface{}{}
 
 	// 实现userinfo功能：通过分析ARN来完成用户类型识别
 	if err != nil {
@@ -2530,6 +2531,197 @@ func (p *AWSProvider) AnalyzePermissions() (map[string]interface{}, error) {
 					// 分析潜在的权限提升路径
 					potentialEscalation = analyzePotentialEscalation(permissions)
 
+					// 获取策略详细信息
+					fmt.Printf("DEBUG: 获取策略详细信息，用户名为: %s\n", userName)
+
+					// 创建新的上下文，避免超时
+					policyCtx, policyCancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer policyCancel()
+
+					// 首先尝试使用原始的 response.User.UserName（如果可用）
+					effectiveUserName := userName
+					if response.User != nil && response.User.UserName != nil {
+						effectiveUserName = *response.User.UserName
+						fmt.Printf("DEBUG: 使用原始用户名: %s\n", effectiveUserName)
+					}
+
+					// 获取附加的托管策略
+					policyInput := &iam.ListAttachedUserPoliciesInput{
+						UserName: aws.String(effectiveUserName),
+					}
+					policyResponse, err := p.iamClient.ListAttachedUserPolicies(policyCtx, policyInput)
+					if err != nil {
+						fmt.Printf("DEBUG: 无法获取托管策略: %v\n", err)
+						// 如果使用原始用户名失败，尝试使用从ARN提取的用户名
+						if effectiveUserName != userName {
+							fmt.Printf("DEBUG: 尝试使用从ARN提取的用户名: %s\n", userName)
+							policyInput.UserName = aws.String(userName)
+							policyResponse, err = p.iamClient.ListAttachedUserPolicies(policyCtx, policyInput)
+							if err != nil {
+								fmt.Printf("DEBUG: 仍然无法获取托管策略: %v\n", err)
+							}
+						}
+					}
+
+					if err == nil && policyResponse != nil {
+						fmt.Printf("DEBUG: 找到 %d 个托管策略\n", len(policyResponse.AttachedPolicies))
+						for _, policy := range policyResponse.AttachedPolicies {
+							fmt.Printf("DEBUG: 处理托管策略: %s, ARN: %s\n", *policy.PolicyName, *policy.PolicyArn)
+							// 获取策略详细信息
+							getPolicyInput := &iam.GetPolicyInput{
+								PolicyArn: policy.PolicyArn,
+							}
+							getPolicyResponse, getPolicyErr := p.iamClient.GetPolicy(policyCtx, getPolicyInput)
+							if getPolicyErr != nil {
+								fmt.Printf("DEBUG: 无法获取策略详情: %v\n", getPolicyErr)
+							} else if getPolicyResponse.Policy == nil {
+								fmt.Printf("DEBUG: 策略详情为空\n")
+							} else {
+								// 获取策略版本
+								getPolicyVersionInput := &iam.GetPolicyVersionInput{
+									PolicyArn: policy.PolicyArn,
+									VersionId: getPolicyResponse.Policy.DefaultVersionId,
+								}
+								getPolicyVersionResponse, getPolicyVersionErr := p.iamClient.GetPolicyVersion(policyCtx, getPolicyVersionInput)
+								if getPolicyVersionErr != nil {
+									fmt.Printf("DEBUG: 无法获取策略版本: %v\n", getPolicyVersionErr)
+								} else if getPolicyVersionResponse.PolicyVersion == nil || getPolicyVersionResponse.PolicyVersion.Document == nil {
+									fmt.Printf("DEBUG: 策略版本或文档为空\n")
+								} else {
+									// 解析策略文档
+									var policyDocument map[string]interface{}
+									// 打印原始策略文档
+									fmt.Printf("DEBUG: 原始策略文档: %s\n", *getPolicyVersionResponse.PolicyVersion.Document)
+									// 先进行URL解码
+									docURLDecoded, err := url.QueryUnescape(*getPolicyVersionResponse.PolicyVersion.Document)
+									if err != nil {
+										fmt.Printf("DEBUG: 无法URL解码策略文档: %v\n", err)
+									} else {
+										fmt.Printf("DEBUG: URL解码后策略文档: %s\n", docURLDecoded)
+										// 尝试直接解析JSON（可能已经是JSON格式）
+										if err := json.Unmarshal([]byte(docURLDecoded), &policyDocument); err != nil {
+											// 如果直接解析失败，尝试base64解码
+											docBytes, decodeErr := base64.StdEncoding.DecodeString(docURLDecoded)
+											if decodeErr != nil {
+												fmt.Printf("DEBUG: 无法解码策略文档: %v\n", decodeErr)
+											} else {
+												if err := json.Unmarshal(docBytes, &policyDocument); err != nil {
+													fmt.Printf("DEBUG: 无法解析策略文档: %v\n", err)
+												} else {
+													policyDetails = append(policyDetails, map[string]interface{}{
+														"policyName":     *policy.PolicyName,
+														"policyArn":      *policy.PolicyArn,
+														"policyType":     "Managed Policy",
+														"policyDocument": policyDocument,
+													})
+													fmt.Printf("DEBUG: 添加托管策略到policyDetails: %s\n", *policy.PolicyName)
+												}
+											}
+										} else {
+											// 直接解析成功
+											policyDetails = append(policyDetails, map[string]interface{}{
+												"policyName":     *policy.PolicyName,
+												"policyArn":      *policy.PolicyArn,
+												"policyType":     "Managed Policy",
+												"policyDocument": policyDocument,
+											})
+											fmt.Printf("DEBUG: 添加托管策略到policyDetails: %s\n", *policy.PolicyName)
+										}
+									}
+								}
+							}
+						}
+					}
+
+					// 获取内联策略
+					inlinePolicyInput := &iam.ListUserPoliciesInput{
+						UserName: aws.String(effectiveUserName),
+					}
+					inlinePolicyResponse, inlineErr := p.iamClient.ListUserPolicies(policyCtx, inlinePolicyInput)
+					if inlineErr != nil {
+						fmt.Printf("DEBUG: 无法获取内联策略: %v\n", inlineErr)
+						// 如果使用原始用户名失败，尝试使用从ARN提取的用户名
+						if effectiveUserName != userName {
+							fmt.Printf("DEBUG: 尝试使用从ARN提取的用户名: %s\n", userName)
+							inlinePolicyInput.UserName = aws.String(userName)
+							inlinePolicyResponse, inlineErr = p.iamClient.ListUserPolicies(policyCtx, inlinePolicyInput)
+							if inlineErr != nil {
+								fmt.Printf("DEBUG: 仍然无法获取内联策略: %v\n", inlineErr)
+							}
+						}
+					}
+
+					if inlineErr == nil && inlinePolicyResponse != nil {
+						fmt.Printf("DEBUG: 找到 %d 个内联策略\n", len(inlinePolicyResponse.PolicyNames))
+						for _, policyName := range inlinePolicyResponse.PolicyNames {
+							fmt.Printf("DEBUG: 处理内联策略: %s\n", policyName)
+							// 获取内联策略详细信息
+							getInlinePolicyInput := &iam.GetUserPolicyInput{
+								UserName:   aws.String(effectiveUserName),
+								PolicyName: &policyName,
+							}
+							getInlinePolicyResponse, getInlinePolicyErr := p.iamClient.GetUserPolicy(policyCtx, getInlinePolicyInput)
+							if getInlinePolicyErr != nil {
+								fmt.Printf("DEBUG: 无法获取内联策略详情: %v\n", getInlinePolicyErr)
+								// 如果使用原始用户名失败，尝试使用从ARN提取的用户名
+								if effectiveUserName != userName {
+									fmt.Printf("DEBUG: 尝试使用从ARN提取的用户名: %s\n", userName)
+									getInlinePolicyInput.UserName = aws.String(userName)
+									getInlinePolicyResponse, getInlinePolicyErr = p.iamClient.GetUserPolicy(policyCtx, getInlinePolicyInput)
+									if getInlinePolicyErr != nil {
+										fmt.Printf("DEBUG: 仍然无法获取内联策略详情: %v\n", getInlinePolicyErr)
+									}
+								}
+							}
+
+							if getInlinePolicyErr == nil && getInlinePolicyResponse != nil && getInlinePolicyResponse.PolicyDocument != nil {
+								// 解析策略文档
+								var policyDocument map[string]interface{}
+								// 打印原始策略文档
+								fmt.Printf("DEBUG: 原始内联策略文档: %s\n", *getInlinePolicyResponse.PolicyDocument)
+								// 先进行URL解码
+								docURLDecoded, err := url.QueryUnescape(*getInlinePolicyResponse.PolicyDocument)
+								if err != nil {
+									fmt.Printf("DEBUG: 无法URL解码内联策略文档: %v\n", err)
+								} else {
+									fmt.Printf("DEBUG: URL解码后内联策略文档: %s\n", docURLDecoded)
+									// 尝试直接解析JSON（可能已经是JSON格式）
+									if err := json.Unmarshal([]byte(docURLDecoded), &policyDocument); err != nil {
+										// 如果直接解析失败，尝试base64解码
+										docBytes, decodeErr := base64.StdEncoding.DecodeString(docURLDecoded)
+										if decodeErr != nil {
+											fmt.Printf("DEBUG: 无法解码内联策略文档: %v\n", decodeErr)
+										} else {
+											if err := json.Unmarshal(docBytes, &policyDocument); err != nil {
+												fmt.Printf("DEBUG: 无法解析内联策略文档: %v\n", err)
+											} else {
+												policyDetails = append(policyDetails, map[string]interface{}{
+													"policyName":     policyName,
+													"policyType":     "Inline Policy",
+													"policyDocument": policyDocument,
+												})
+												fmt.Printf("DEBUG: 添加内联策略到policyDetails: %s\n", policyName)
+											}
+										}
+									} else {
+										// 直接解析成功
+										policyDetails = append(policyDetails, map[string]interface{}{
+											"policyName":     policyName,
+											"policyType":     "Inline Policy",
+											"policyDocument": policyDocument,
+										})
+										fmt.Printf("DEBUG: 添加内联策略到policyDetails: %s\n", policyName)
+									}
+								}
+							} else if getInlinePolicyResponse == nil {
+								fmt.Printf("DEBUG: 内联策略响应为空\n")
+							} else if getInlinePolicyResponse.PolicyDocument == nil {
+								fmt.Printf("DEBUG: 内联策略文档为空\n")
+							}
+						}
+					}
+					fmt.Printf("DEBUG: 最终policyDetails长度: %d\n", len(policyDetails))
+
 					// 计算风险等级
 					riskLevel = calculateRiskLevel(permissions, potentialEscalation)
 				} else if userType == "IAM Role" {
@@ -2551,6 +2743,129 @@ func (p *AWSProvider) AnalyzePermissions() (map[string]interface{}, error) {
 					}
 					// 分析潜在的权限提升路径
 					potentialEscalation = analyzePotentialEscalation(permissions)
+
+					// 获取角色的策略详细信息
+					fmt.Printf("DEBUG: 获取角色策略详细信息，角色名为: %s\n", userName)
+
+					// 创建新的上下文，避免超时
+					policyCtx, policyCancel := context.WithTimeout(context.Background(), 15*time.Second)
+					defer policyCancel()
+
+					// 获取附加的托管策略
+					rolePolicyInput := &iam.ListAttachedRolePoliciesInput{
+						RoleName: aws.String(userName),
+					}
+					rolePolicyResponse, err := p.iamClient.ListAttachedRolePolicies(policyCtx, rolePolicyInput)
+					if err != nil {
+						fmt.Printf("DEBUG: 无法获取角色托管策略: %v\n", err)
+					} else if rolePolicyResponse != nil {
+						fmt.Printf("DEBUG: 找到 %d 个角色托管策略\n", len(rolePolicyResponse.AttachedPolicies))
+						for _, policy := range rolePolicyResponse.AttachedPolicies {
+							fmt.Printf("DEBUG: 处理角色托管策略: %s, ARN: %s\n", *policy.PolicyName, *policy.PolicyArn)
+							// 获取策略详细信息
+							getPolicyInput := &iam.GetPolicyInput{
+								PolicyArn: policy.PolicyArn,
+							}
+							getPolicyResponse, getPolicyErr := p.iamClient.GetPolicy(policyCtx, getPolicyInput)
+							if getPolicyErr != nil {
+								fmt.Printf("DEBUG: 无法获取角色策略详情: %v\n", getPolicyErr)
+							} else if getPolicyResponse.Policy == nil {
+								fmt.Printf("DEBUG: 角色策略详情为空\n")
+							} else {
+								// 获取策略版本
+								getPolicyVersionInput := &iam.GetPolicyVersionInput{
+									PolicyArn: policy.PolicyArn,
+									VersionId: getPolicyResponse.Policy.DefaultVersionId,
+								}
+								getPolicyVersionResponse, getPolicyVersionErr := p.iamClient.GetPolicyVersion(policyCtx, getPolicyVersionInput)
+								if getPolicyVersionErr != nil {
+									fmt.Printf("DEBUG: 无法获取角色策略版本: %v\n", getPolicyVersionErr)
+								} else if getPolicyVersionResponse.PolicyVersion == nil || getPolicyVersionResponse.PolicyVersion.Document == nil {
+									fmt.Printf("DEBUG: 角色策略版本或文档为空\n")
+								} else {
+									// 解析策略文档
+									var policyDocument map[string]interface{}
+									// 先进行URL解码
+									docURLDecoded, err := url.QueryUnescape(*getPolicyVersionResponse.PolicyVersion.Document)
+									if err != nil {
+										fmt.Printf("DEBUG: 无法URL解码角色策略文档: %v\n", err)
+									} else {
+										// 再进行base64解码
+										docBytes, decodeErr := base64.StdEncoding.DecodeString(docURLDecoded)
+										if decodeErr != nil {
+											fmt.Printf("DEBUG: 无法解码角色策略文档: %v\n", decodeErr)
+										} else {
+											if err := json.Unmarshal(docBytes, &policyDocument); err != nil {
+												fmt.Printf("DEBUG: 无法解析角色策略文档: %v\n", err)
+											} else {
+												policyDetails = append(policyDetails, map[string]interface{}{
+													"policyName":     *policy.PolicyName,
+													"policyArn":      *policy.PolicyArn,
+													"policyType":     "Managed Policy",
+													"policyDocument": policyDocument,
+												})
+												fmt.Printf("DEBUG: 添加角色托管策略到policyDetails: %s\n", *policy.PolicyName)
+											}
+										}
+									}
+								}
+							}
+						}
+					}
+
+					// 获取角色的内联策略
+					inlineRolePolicyInput := &iam.ListRolePoliciesInput{
+						RoleName: aws.String(userName),
+					}
+					inlineRolePolicyResponse, inlineErr := p.iamClient.ListRolePolicies(policyCtx, inlineRolePolicyInput)
+					if inlineErr != nil {
+						fmt.Printf("DEBUG: 无法获取角色内联策略: %v\n", inlineErr)
+					} else if inlineRolePolicyResponse != nil {
+						fmt.Printf("DEBUG: 找到 %d 个角色内联策略\n", len(inlineRolePolicyResponse.PolicyNames))
+						for _, policyName := range inlineRolePolicyResponse.PolicyNames {
+							fmt.Printf("DEBUG: 处理角色内联策略: %s\n", policyName)
+							// 获取内联策略详细信息
+							getInlinePolicyInput := &iam.GetRolePolicyInput{
+								RoleName:   aws.String(userName),
+								PolicyName: &policyName,
+							}
+							getInlinePolicyResponse, getInlinePolicyErr := p.iamClient.GetRolePolicy(policyCtx, getInlinePolicyInput)
+							if getInlinePolicyErr != nil {
+								fmt.Printf("DEBUG: 无法获取角色内联策略详情: %v\n", getInlinePolicyErr)
+							} else if getInlinePolicyResponse != nil && getInlinePolicyResponse.PolicyDocument != nil {
+								// 解析策略文档
+								var policyDocument map[string]interface{}
+								// 先进行URL解码
+								docURLDecoded, err := url.QueryUnescape(*getInlinePolicyResponse.PolicyDocument)
+								if err != nil {
+									fmt.Printf("DEBUG: 无法URL解码角色内联策略文档: %v\n", err)
+								} else {
+									// 再进行base64解码
+									docBytes, decodeErr := base64.StdEncoding.DecodeString(docURLDecoded)
+									if decodeErr != nil {
+										fmt.Printf("DEBUG: 无法解码角色内联策略文档: %v\n", decodeErr)
+									} else {
+										if err := json.Unmarshal(docBytes, &policyDocument); err != nil {
+											fmt.Printf("DEBUG: 无法解析角色内联策略文档: %v\n", err)
+										} else {
+											policyDetails = append(policyDetails, map[string]interface{}{
+												"policyName":     policyName,
+												"policyType":     "Inline Policy",
+												"policyDocument": policyDocument,
+											})
+											fmt.Printf("DEBUG: 添加角色内联策略到policyDetails: %s\n", policyName)
+										}
+									}
+								}
+							} else if getInlinePolicyResponse == nil {
+								fmt.Printf("DEBUG: 角色内联策略响应为空\n")
+							} else if getInlinePolicyResponse.PolicyDocument == nil {
+								fmt.Printf("DEBUG: 角色内联策略文档为空\n")
+							}
+						}
+					}
+					fmt.Printf("DEBUG: 最终policyDetails长度: %d\n", len(policyDetails))
+
 					// 计算风险等级
 					riskLevel = calculateRiskLevel(permissions, potentialEscalation)
 				}
@@ -2564,6 +2879,7 @@ func (p *AWSProvider) AnalyzePermissions() (map[string]interface{}, error) {
 		"userType":            userType,
 		"role":                "None",
 		"permissions":         permissions,
+		"policyDetails":       policyDetails,
 		"potentialEscalation": potentialEscalation,
 		"riskLevel":           riskLevel,
 		"message":             "Permission analysis completed",

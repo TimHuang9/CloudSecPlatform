@@ -87,7 +87,7 @@ const ResourceOverview = () => {
         message.success('从数据库读取权限信息成功')
       } else {
         // 如果数据库中没有权限信息，调用云API获取
-        const cloudResponse = await api.post('/cloud/escalate', {
+        const cloudResponse = await api.post('/cloud/analyze', {
           credential_id: credential.id
         })
         
