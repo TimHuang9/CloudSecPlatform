@@ -14,9 +14,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/apigateway"
 	"github.com/aws/aws-sdk-go-v2/service/cloudtrail"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	"github.com/aws/aws-sdk-go-v2/service/codecommit"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	"github.com/aws/aws-sdk-go-v2/service/ecr"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -55,6 +57,8 @@ type AWSProvider struct {
 	snsClient              *sns.Client
 	sqsClient              *sqs.Client
 	servicediscoveryClient *servicediscovery.Client
+	codecommitClient       *codecommit.Client
+	ecrClient              *ecr.Client
 }
 
 // NewAWSProvider 创建AWS云平台实例
@@ -115,6 +119,8 @@ func (p *AWSProvider) Init(accessKey, secretKey, region string) error {
 	p.snsClient = sns.NewFromConfig(cfg)
 	p.sqsClient = sqs.NewFromConfig(cfg)
 	p.servicediscoveryClient = servicediscovery.NewFromConfig(cfg)
+	p.codecommitClient = codecommit.NewFromConfig(cfg)
+	p.ecrClient = ecr.NewFromConfig(cfg)
 
 	return nil
 }
@@ -1440,6 +1446,156 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			result["sqsQueues"] = []interface{}{}
 		}
 
+		// 尝试枚举CodeCommit仓库
+		var allCodeCommitRepositories []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CodeCommit (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CodeCommit client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CodeCommit仓库
+			repositories, err := regionProvider.enumerateCodeCommitRepositories()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CodeCommit (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CodeCommit repositories in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CodeCommit仓库添加到总列表
+			for _, repo := range repositories {
+				// 添加区域信息
+				if repoMap, ok := repo.(map[string]interface{}); ok {
+					repoMap["region"] = region
+					allCodeCommitRepositories = append(allCodeCommitRepositories, repoMap)
+				}
+			}
+		}
+
+		if len(allCodeCommitRepositories) > 0 {
+			result["codecommitRepositories"] = allCodeCommitRepositories
+		} else {
+			result["codecommitRepositories"] = []interface{}{}
+		}
+
+		// 尝试枚举ECR仓库
+		var allECRRepositories []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("ECR (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create ECR client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的ECR仓库
+			repositories, err := regionProvider.enumerateECRRepositories()
+			if err != nil {
+				errorMsg := fmt.Sprintf("ECR (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate ECR repositories in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的ECR仓库添加到总列表
+			for _, repo := range repositories {
+				// 添加区域信息
+				if repoMap, ok := repo.(map[string]interface{}); ok {
+					repoMap["region"] = region
+					allECRRepositories = append(allECRRepositories, repoMap)
+				}
+			}
+		}
+
+		if len(allECRRepositories) > 0 {
+			result["ecrRepositories"] = allECRRepositories
+		} else {
+			result["ecrRepositories"] = []interface{}{}
+		}
+
+	case "codecommit":
+		// 枚举CodeCommit仓库
+		var allRepositories []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("CodeCommit (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create CodeCommit client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的CodeCommit仓库
+			repositories, err := regionProvider.enumerateCodeCommitRepositories()
+			if err != nil {
+				errorMsg := fmt.Sprintf("CodeCommit (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate CodeCommit repositories in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的CodeCommit仓库添加到总列表
+			for _, repo := range repositories {
+				// 添加区域信息
+				if repoMap, ok := repo.(map[string]interface{}); ok {
+					repoMap["region"] = region
+					allRepositories = append(allRepositories, repoMap)
+				}
+			}
+		}
+
+		if len(allRepositories) > 0 {
+			result["codecommitRepositories"] = allRepositories
+		} else {
+			result["codecommitRepositories"] = []interface{}{}
+		}
+
+	case "ecr":
+		// 枚举ECR仓库
+		var allRepositories []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("ECR (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create ECR client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的ECR仓库
+			repositories, err := regionProvider.enumerateECRRepositories()
+			if err != nil {
+				errorMsg := fmt.Sprintf("ECR (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate ECR repositories in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的ECR仓库添加到总列表
+			for _, repo := range repositories {
+				// 添加区域信息
+				if repoMap, ok := repo.(map[string]interface{}); ok {
+					repoMap["region"] = region
+					allRepositories = append(allRepositories, repoMap)
+				}
+			}
+		}
+
+		if len(allRepositories) > 0 {
+			result["ecrRepositories"] = allRepositories
+		} else {
+			result["ecrRepositories"] = []interface{}{}
+		}
+
 	default:
 		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
 	}
@@ -2141,6 +2297,58 @@ func (p *AWSProvider) enumerateSQSQueues() ([]interface{}, error) {
 	}
 
 	return queues, nil
+}
+
+// enumerateCodeCommitRepositories 枚举CodeCommit仓库
+func (p *AWSProvider) enumerateCodeCommitRepositories() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取CodeCommit仓库列表
+	input := &codecommit.ListRepositoriesInput{}
+	response, err := p.codecommitClient.ListRepositories(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list CodeCommit repositories: %w", err)
+	}
+
+	var repositories []interface{}
+	for _, repo := range response.Repositories {
+		repositories = append(repositories, map[string]interface{}{
+			"repositoryName": *repo.RepositoryName,
+			"repositoryId":   *repo.RepositoryId,
+		})
+	}
+
+	return repositories, nil
+}
+
+// enumerateECRRepositories 枚举ECR仓库
+func (p *AWSProvider) enumerateECRRepositories() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取ECR仓库列表
+	input := &ecr.DescribeRepositoriesInput{}
+	response, err := p.ecrClient.DescribeRepositories(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe ECR repositories: %w", err)
+	}
+
+	var repositories []interface{}
+	for _, repo := range response.Repositories {
+		repositories = append(repositories, map[string]interface{}{
+			"repositoryName":     *repo.RepositoryName,
+			"repositoryUri":      *repo.RepositoryUri,
+			"registryId":         *repo.RegistryId,
+			"repositoryArn":      *repo.RepositoryArn,
+			"createdAt":          repo.CreatedAt,
+			"imageTagMutability": repo.ImageTagMutability,
+		})
+	}
+
+	return repositories, nil
 }
 
 // AnalyzePermissions 权限分析

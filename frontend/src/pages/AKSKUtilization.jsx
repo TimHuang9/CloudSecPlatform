@@ -119,7 +119,9 @@ const AKSKUtilization = () => {
         { value: 'dynamodb', label: 'DynamoDB 表' },
         { value: 'secretsmanager', label: 'Secrets Manager' },
         { value: 'sns', label: 'SNS 主题' },
-        { value: 'sqs', label: 'SQS 队列' }
+        { value: 'sqs', label: 'SQS 队列' },
+        { value: 'codecommit', label: 'CodeCommit 仓库' },
+        { value: 'ecr', label: 'ECR 仓库' }
       ]
     } else if (selectedCredential.cloudProvider === '阿里云') {
       return [
@@ -178,7 +180,9 @@ const AKSKUtilization = () => {
         { value: 'dynamodb', label: 'DynamoDB' },
         { value: 'secretsmanager', label: 'Secrets Manager' },
         { value: 'sns', label: 'SNS' },
-        { value: 'sqs', label: 'SQS' }
+        { value: 'sqs', label: 'SQS' },
+        { value: 'codecommit', label: 'CodeCommit' },
+        { value: 'ecr', label: 'ECR' }
       ]
     } else if (selectedCredential.cloudProvider === '阿里云') {
       return [
@@ -1424,6 +1428,126 @@ const AKSKUtilization = () => {
                   setEnumerationProgresses(prev => {
                     const updated = { ...prev }
                     updated[resourceType] = { progress: 100, status: `没有发现 SQS 队列` }
+                    return updated
+                  })
+                }
+                break
+              
+              case 'codecommit':
+                if (result.codecommitRepositories && Array.isArray(result.codecommitRepositories)) {
+                  const regions = [...new Set(result.codecommitRepositories.map(repo => repo.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 CodeCommit 仓库 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 CodeCommit 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 CodeCommit 仓库 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 CodeCommit 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 CodeCommit 仓库 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.codecommitRepositories.forEach(repo => {
+                    resources.push({
+                      id: repo.repositoryId,
+                      name: repo.repositoryName,
+                      type: 'codecommit',
+                      status: 'active',
+                      region: repo.region || selectedCredential.region,
+                      cloneUrlHttp: repo.cloneUrlHttp,
+                      cloneUrlSsh: repo.cloneUrlSsh
+                    })
+                  })
+                  
+                  // 更新 CodeCommit 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 CodeCommit 仓库 (区域: ${regions.join(', ')}, ${result.codecommitRepositories.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 CodeCommit 仓库，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 CodeCommit 仓库` }
+                    return updated
+                  })
+                }
+                break
+              
+              case 'ecr':
+                if (result.ecrRepositories && Array.isArray(result.ecrRepositories)) {
+                  const regions = [...new Set(result.ecrRepositories.map(repo => repo.region || selectedCredential.region))]
+                  setEnumerationStatus(`枚举 ECR 仓库 (区域: ${regions.join(', ')})...`)
+                  
+                  // 更新 ECR 进度条状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 0, status: `开始枚举 ECR 仓库 (区域: ${regions.join(', ')})` }
+                    return updated
+                  })
+                  
+                  // 模拟 ECR 处理进度
+                  await new Promise(resolve => {
+                    let progress = 0
+                    const interval = setInterval(() => {
+                      progress += 20
+                      setEnumerationProgresses(prev => {
+                        const updated = { ...prev }
+                        updated[resourceType] = { 
+                          progress: Math.min(progress, 100), 
+                          status: `处理 ECR 仓库 (区域: ${regions.join(', ')})... ${Math.min(progress, 100)}%`
+                        }
+                        return updated
+                      })
+                      if (progress >= 100) {
+                        clearInterval(interval)
+                        resolve()
+                      }
+                    }, 200)
+                  })
+                  
+                  result.ecrRepositories.forEach(repo => {
+                    resources.push({
+                      id: repo.repositoryArn,
+                      name: repo.repositoryName,
+                      type: 'ecr',
+                      status: 'active',
+                      region: repo.region || selectedCredential.region,
+                      repositoryUri: repo.repositoryUri,
+                      imageTagMutability: repo.imageTagMutability
+                    })
+                  })
+                  
+                  // 更新 ECR 进度条为完成状态
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `完成枚举 ECR 仓库 (区域: ${regions.join(', ')}, ${result.ecrRepositories.length} 个)` }
+                    return updated
+                  })
+                } else {
+                  // 如果没有 ECR 仓库，标记为完成
+                  setEnumerationProgresses(prev => {
+                    const updated = { ...prev }
+                    updated[resourceType] = { progress: 100, status: `没有发现 ECR 仓库` }
                     return updated
                   })
                 }
