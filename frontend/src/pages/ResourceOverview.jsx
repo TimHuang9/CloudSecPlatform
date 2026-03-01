@@ -556,7 +556,10 @@ const ResourceOverview = () => {
               name: repo.repositoryName,
               type: 'ecr',
               status: 'active',
-              region: repo.region || credential.region
+              region: repo.region || credential.region,
+              images: repo.images || [],
+              moreImages: repo.moreImages || false,
+              expanded: false
             })
           })
         }
@@ -1946,11 +1949,96 @@ const ResourceOverview = () => {
                                 </div>
                               </div>
                             )
+                          } else if (record.type === 'ecr' && record.images && record.images.length > 0) {
+                            return (
+                              <div style={{ padding: '16px', backgroundColor: '#f9f9f9', borderRadius: '4px' }}>
+                                <div style={{ marginBottom: '16px' }}>
+                                  <Text strong>镜像列表：</Text>
+                                </div>
+                                <div style={{ overflowX: 'auto' }}>
+                                  <Table
+                                    columns={[
+                                      { title: '镜像摘要', dataIndex: 'imageDigest', key: 'imageDigest', ellipsis: true, width: 400 },
+                                      { 
+                                        title: '标签', 
+                                        dataIndex: 'imageTags', 
+                                        key: 'imageTags', 
+                                        width: 200,
+                                        render: (tags) => {
+                                          if (tags && tags.length > 0) {
+                                            return tags.map((tag, index) => (
+                                              <Tag key={index} style={{ marginRight: 8, marginBottom: 8 }}>{tag}</Tag>
+                                            ))
+                                          }
+                                          return '-' 
+                                        }
+                                      },
+                                      { 
+                                        title: '大小', 
+                                        dataIndex: 'imageSizeInBytes', 
+                                        key: 'imageSizeInBytes', 
+                                        width: 100,
+                                        render: (size) => {
+                                          if (size) {
+                                            return (size / (1024 * 1024)).toFixed(2) + ' MB'
+                                          }
+                                          return '-' 
+                                        }
+                                      },
+                                      { 
+                                        title: '推送时间', 
+                                        dataIndex: 'imagePushedAt', 
+                                        key: 'imagePushedAt', 
+                                        width: 200,
+                                        render: (time) => {
+                                          if (time) {
+                                            return new Date(time).toLocaleString()
+                                          }
+                                          return '-' 
+                                        }
+                                      },
+                                      { 
+                                        title: '操作', 
+                                        key: 'action',
+                                        width: 100,
+                                        render: (_, imageRecord) => {
+                                          // 构建镜像下载命令
+                                          const imageUri = record.id
+                                          const imageTag = imageRecord.imageTags && imageRecord.imageTags.length > 0 ? imageRecord.imageTags[0] : imageRecord.imageDigest
+                                          const downloadCommand = `docker pull ${imageUri}:${imageTag}`
+                                          return (
+                                            <div>
+                                              <Button 
+                                                type="link" 
+                                                icon={<DownloadOutlined />}
+                                                onClick={() => {
+                                                  // 复制下载命令到剪贴板
+                                                  navigator.clipboard.writeText(downloadCommand)
+                                                  message.success('下载命令已复制到剪贴板')
+                                                }}
+                                              >
+                                                复制命令
+                                              </Button>
+                                            </div>
+                                          )
+                                        }
+                                      }
+                                    ]}
+                                    dataSource={record.images}
+                                    rowKey="imageDigest"
+                                    pagination={{ pageSize: 20 }}
+                                    size="small"
+                                    scroll={{ x: 'max-content' }}
+                                  />
+                                </div>
+                              </div>
+                            )
                           }
                           return null
                         },
                         rowExpandable: record => {
-                          return record.type === 's3' && record.objects && record.objects.length > 0
+                          return (record.type === 's3' && record.objects && record.objects.length > 0) || 
+                                 (record.type === 'ecr' && record.images && record.images.length > 0)
                         }
                       }}
                     />

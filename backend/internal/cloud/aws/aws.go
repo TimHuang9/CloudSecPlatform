@@ -17,8 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/codecommit"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
-	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/aws/aws-sdk-go-v2/service/ecr"
+	ecrtypes "github.com/aws/aws-sdk-go-v2/service/ecr/types"
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
@@ -2338,6 +2339,14 @@ func (p *AWSProvider) enumerateECRRepositories() ([]interface{}, error) {
 
 	var repositories []interface{}
 	for _, repo := range response.Repositories {
+		// 为每个仓库获取镜像列表
+		images, err := p.listECRImages(*repo.RepositoryName)
+		if err != nil {
+			// 如果获取镜像失败，仍然添加仓库信息，但不包含镜像
+			fmt.Printf("Warning: Failed to list images for repository %s: %v\n", *repo.RepositoryName, err)
+			images = []interface{}{}
+		}
+
 		repositories = append(repositories, map[string]interface{}{
 			"repositoryName":     *repo.RepositoryName,
 			"repositoryUri":      *repo.RepositoryUri,
@@ -2345,10 +2354,64 @@ func (p *AWSProvider) enumerateECRRepositories() ([]interface{}, error) {
 			"repositoryArn":      *repo.RepositoryArn,
 			"createdAt":          repo.CreatedAt,
 			"imageTagMutability": repo.ImageTagMutability,
+			"images":             images,
+			"moreImages":         len(images) >= 100, // 假设最多返回100个镜像
 		})
 	}
 
 	return repositories, nil
+}
+
+// listECRImages 列出ECR仓库中的镜像
+func (p *AWSProvider) listECRImages(repositoryName string) ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取镜像列表
+	input := &ecr.ListImagesInput{
+		RepositoryName: aws.String(repositoryName),
+		MaxResults:     aws.Int32(100), // 最多返回100个镜像
+	}
+
+	response, err := p.ecrClient.ListImages(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ECR images: %w", err)
+	}
+
+	var images []interface{}
+	for _, image := range response.ImageIds {
+		// 为每个镜像获取详细信息
+		describeInput := &ecr.DescribeImagesInput{
+			RepositoryName: aws.String(repositoryName),
+			ImageIds:       []ecrtypes.ImageIdentifier{image},
+		}
+
+		describeResponse, err := p.ecrClient.DescribeImages(ctx, describeInput)
+		if err != nil {
+			// 如果获取镜像详情失败，仍然添加镜像基本信息
+			fmt.Printf("Warning: Failed to describe image %v for repository %s: %v\n", image, repositoryName, err)
+			images = append(images, map[string]interface{}{
+				"imageId":   image,
+				"error":     err.Error(),
+				"timestamp": time.Now(),
+			})
+			continue
+		}
+
+		for _, detailedImage := range describeResponse.ImageDetails {
+			images = append(images, map[string]interface{}{
+				"imageDigest":            *detailedImage.ImageDigest,
+				"imageTags":              detailedImage.ImageTags,
+				"imageSizeInBytes":       detailedImage.ImageSizeInBytes,
+				"imagePushedAt":          detailedImage.ImagePushedAt,
+				"imageManifestMediaType": detailedImage.ImageManifestMediaType,
+				"artifactMediaType":      detailedImage.ArtifactMediaType,
+			})
+		}
+	}
+
+	return images, nil
 }
 
 // AnalyzePermissions 权限分析
@@ -3346,7 +3409,7 @@ func (p *AWSProvider) checkAndCreateInstanceProfileWithClient(ctx context.Contex
 
 	// 将实例配置文件附加到EC2实例
 	associateInput := &ec2.AssociateIamInstanceProfileInput{
-		IamInstanceProfile: &types.IamInstanceProfileSpecification{
+		IamInstanceProfile: &ec2types.IamInstanceProfileSpecification{
 			Name: aws.String(profileName),
 		},
 		InstanceId: aws.String(instanceID),
