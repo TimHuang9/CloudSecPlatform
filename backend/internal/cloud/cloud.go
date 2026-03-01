@@ -18,6 +18,9 @@ type CloudProvider interface {
 	// 权限分析
 	AnalyzePermissions() (map[string]interface{}, error)
 
+	// 权限提升
+	EscalatePrivileges() (map[string]interface{}, error)
+
 	// 资源操作
 	OperateResource(resourceType, action, resourceID string, params map[string]interface{}) (map[string]interface{}, error)
 

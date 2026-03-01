@@ -1757,16 +1757,10 @@ const AKSKUtilization = () => {
       return
     }
 
-    // 检查是否已经获取了权限信息
-    if (Object.keys(permissions).length === 0) {
-      message.warning('请先获取权限信息，然后再生成提权路径')
-      return
-    }
-
     setLoading(true)
     try {
       // 调用真实 API
-      const response = await api.post('/cloud/analyze', {
+      const response = await api.post('/cloud/escalate', {
         credential_id: selectedCredential.id
       })
       
@@ -1774,14 +1768,35 @@ const AKSKUtilization = () => {
       if (response.data && response.data.result) {
         // 转换后端返回的数据格式为前端期望的格式
         const result = response.data.result
+        
+        // 构建提权步骤
+        const steps = []
+        result.attempts?.forEach((attempt, index) => {
+          steps.push(`尝试策略 ${index + 1}: ${attempt.strategy} - ${attempt.status}`)
+          if (attempt.details?.steps) {
+            attempt.details.steps.forEach(step => {
+              steps.push(`  - ${step}`)
+            })
+          }
+        })
+        
         setPrivilegeResult({
-          success: true,
-          currentPermissions: result.permissions || [],
-          escalatedPermissions: result.permissions || [],
-          steps: result.potentialEscalation || [],
+          success: result.status === 'completed' && result.successfulStrategies?.length > 0,
+          currentPermissions: [],
+          escalatedPermissions: result.successfulStrategies || [],
+          steps: steps,
+          strategies: result.strategies || [],
+          successfulStrategies: result.successfulStrategies || [],
+          failedStrategies: result.failedStrategies || [],
+          attempts: result.attempts || [],
           timestamp: new Date().toISOString()
         })
-        message.success('权限提升成功')
+        
+        if (result.status === 'completed' && result.successfulStrategies?.length > 0) {
+          message.success('权限提升成功')
+        } else {
+          message.warning('权限提升失败，所有策略都尝试失败')
+        }
       } else {
         setPrivilegeResult(null)
         message.warning('权限提升结果未知')
@@ -2488,19 +2503,35 @@ const AKSKUtilization = () => {
                       </Text>
                     </div>
                     <div style={{ marginBottom: '12px' }}>
-                      <Text strong>当前权限：</Text>
+                      <Text strong>尝试的策略：</Text>
                       <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.currentPermissions.map((perm, index) => (
-                          <div key={index} style={{ marginBottom: '4px' }}>• {perm}</div>
+                        {privilegeResult.strategies.map((strategy, index) => (
+                          <div key={index} style={{ marginBottom: '4px' }}>• {strategy}</div>
                         ))}
                       </div>
                     </div>
                     <div style={{ marginBottom: '12px' }}>
-                      <Text strong>提升后权限：</Text>
+                      <Text strong>成功的策略：</Text>
                       <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {privilegeResult.escalatedPermissions.map((perm, index) => (
-                          <div key={index} style={{ marginBottom: '4px' }}>• {perm}</div>
-                        ))}
+                        {privilegeResult.successfulStrategies.length > 0 ? (
+                          privilegeResult.successfulStrategies.map((strategy, index) => (
+                            <div key={index} style={{ marginBottom: '4px', color: '#52c41a' }}>• {strategy}</div>
+                          ))
+                        ) : (
+                          <div>无</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '12px' }}>
+                      <Text strong>失败的策略：</Text>
+                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
+                        {privilegeResult.failedStrategies.length > 0 ? (
+                          privilegeResult.failedStrategies.map((strategy, index) => (
+                            <div key={index} style={{ marginBottom: '4px', color: '#ff4d4f' }}>• {strategy}</div>
+                          ))
+                        ) : (
+                          <div>无</div>
+                        )}
                       </div>
                     </div>
                     <div style={{ marginBottom: '12px' }}>
