@@ -1,8 +1,8 @@
 package cloud
 
 import (
-	"github.com/redteamsec/backend/internal/cloud/aws"
 	"github.com/redteamsec/backend/internal/cloud/aliyun"
+	"github.com/redteamsec/backend/internal/cloud/aws"
 	"github.com/redteamsec/backend/internal/cloud/gcp"
 	// "github.com/redteamsec/backend/internal/cloud/azure"
 )
@@ -19,7 +19,7 @@ type CloudProvider interface {
 	AnalyzePermissions() (map[string]interface{}, error)
 
 	// 权限提升
-	EscalatePrivileges() (map[string]interface{}, error)
+	EscalatePrivileges(escalationMethods []string) (map[string]interface{}, error)
 
 	// 资源操作
 	OperateResource(resourceType, action, resourceID string, params map[string]interface{}) (map[string]interface{}, error)

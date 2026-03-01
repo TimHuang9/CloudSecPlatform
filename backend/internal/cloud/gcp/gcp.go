@@ -256,69 +256,93 @@ func (p *GCPProvider) ValidateCredentials() (bool, error) {
 }
 
 // EscalatePrivileges 权限提升 - 使用暴力枚举方法尝试不同的提权策略
-func (p *GCPProvider) EscalatePrivileges() (map[string]interface{}, error) {
+func (p *GCPProvider) EscalatePrivileges(escalationMethods []string) (map[string]interface{}, error) {
 	// 结果集
 	successfulStrategies := []string{}
 	failedStrategies := []string{}
 	attempts := []map[string]interface{}{}
-	strategies := []string{"attachpolicy", "createrole", "assumerole", "instanceprofile"}
+	allStrategies := []string{"attachpolicy", "createrole", "assumerole", "instanceprofile"}
+
+	// 确定要执行的策略
+	strategies := allStrategies
+	if len(escalationMethods) > 0 {
+		strategies = escalationMethods
+	}
 
 	// 模拟尝试 attachpolicy 策略
-	failedStrategies = append(failedStrategies, "attachpolicy")
-	attempts = append(attempts, map[string]interface{}{
-		"strategy": "attachpolicy",
-		"status":   "failed",
-		"details": map[string]interface{}{
-			"attempt": "Attaching policy to current user",
-			"steps":   []string{"Attempted to attach admin policy", "Failed: Permission denied"},
-			"error":   "Permission denied",
-		},
-	})
+	if contains(strategies, "attachpolicy") {
+		failedStrategies = append(failedStrategies, "attachpolicy")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "attachpolicy",
+			"status":   "failed",
+			"details": map[string]interface{}{
+				"attempt": "Attaching policy to current user",
+				"steps":   []string{"Attempted to attach admin policy", "Failed: Permission denied"},
+				"error":   "Permission denied",
+			},
+		})
+	}
 
 	// 模拟尝试 createrole 策略
-	failedStrategies = append(failedStrategies, "createrole")
-	attempts = append(attempts, map[string]interface{}{
-		"strategy": "createrole",
-		"status":   "failed",
-		"details": map[string]interface{}{
-			"attempt": "Creating and assuming admin role",
-			"steps":   []string{"Attempted to create admin role", "Failed: Permission denied"},
-			"error":   "Permission denied",
-		},
-	})
+	if contains(strategies, "createrole") {
+		failedStrategies = append(failedStrategies, "createrole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "createrole",
+			"status":   "failed",
+			"details": map[string]interface{}{
+				"attempt": "Creating and assuming admin role",
+				"steps":   []string{"Attempted to create admin role", "Failed: Permission denied"},
+				"error":   "Permission denied",
+			},
+		})
+	}
 
 	// 模拟尝试 assumerole 策略
-	failedStrategies = append(failedStrategies, "assumerole")
-	attempts = append(attempts, map[string]interface{}{
-		"strategy": "assumerole",
-		"status":   "failed",
-		"details": map[string]interface{}{
-			"attempt": "Assuming existing roles",
-			"steps":   []string{"Attempted to assume roles", "Failed: No roles could be assumed"},
-			"error":   "No roles could be assumed",
-		},
-	})
+	if contains(strategies, "assumerole") {
+		failedStrategies = append(failedStrategies, "assumerole")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "assumerole",
+			"status":   "failed",
+			"details": map[string]interface{}{
+				"attempt": "Assuming existing roles",
+				"steps":   []string{"Attempted to assume roles", "Failed: No roles could be assumed"},
+				"error":   "No roles could be assumed",
+			},
+		})
+	}
 
 	// 模拟尝试 instanceprofile 策略
-	failedStrategies = append(failedStrategies, "instanceprofile")
-	attempts = append(attempts, map[string]interface{}{
-		"strategy": "instanceprofile",
-		"status":   "failed",
-		"details": map[string]interface{}{
-			"attempt": "Creating and using instance profile",
-			"steps":   []string{"Attempted to create instance profile", "Failed: Permission denied"},
-			"error":   "Permission denied",
-		},
-	})
+	if contains(strategies, "instanceprofile") {
+		failedStrategies = append(failedStrategies, "instanceprofile")
+		attempts = append(attempts, map[string]interface{}{
+			"strategy": "instanceprofile",
+			"status":   "failed",
+			"details": map[string]interface{}{
+				"attempt": "Creating and using instance profile",
+				"steps":   []string{"Attempted to create instance profile", "Failed: Permission denied"},
+				"error":   "Permission denied",
+			},
+		})
+	}
 
 	// 如果所有策略都失败
 	return map[string]interface{}{
 		"message":              "All privilege escalation strategies failed",
-		"strategies":           strategies,
+		"strategies":           allStrategies,
 		"successfulStrategies": successfulStrategies,
 		"failedStrategies":     failedStrategies,
 		"attempts":             attempts,
 		"status":               "failed",
 		"timestamp":            time.Now().Format(time.RFC3339),
 	}, nil
+}
+
+// contains 检查字符串是否在切片中
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }

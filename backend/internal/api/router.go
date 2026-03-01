@@ -886,7 +886,8 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		var input struct {
-			CredentialID uint `json:"credential_id" binding:"required"`
+			CredentialID      uint     `json:"credential_id" binding:"required"`
+			EscalationMethods []string `json:"escalation_methods"`
 		}
 
 		if err := c.ShouldBindJSON(&input); err != nil {
@@ -910,12 +911,13 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 
 		// 创建任务记录参数
 		parameters, _ := json.Marshal(map[string]interface{}{
-			"credential_id": input.CredentialID,
+			"credential_id":      input.CredentialID,
+			"escalation_methods": input.EscalationMethods,
 		})
 
 		startTime := time.Now()
 		// 权限提升
-		result, err := provider.EscalatePrivileges()
+		result, err := provider.EscalatePrivileges(input.EscalationMethods)
 		if err != nil {
 			c.JSON(500, gin.H{"error": "Failed to escalate privileges: " + err.Error()})
 			return

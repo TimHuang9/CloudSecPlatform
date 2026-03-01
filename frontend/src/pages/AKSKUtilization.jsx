@@ -56,13 +56,13 @@ const AKSKUtilization = () => {
     const defaultGroups = [
       {
         id: '1',
-        name: '基础提权',
+        name: '自提权',
         methods: ['attachpolicy', 'passrole'],
         created: new Date().toISOString()
       },
       {
         id: '2',
-        name: '高级提权',
+        name: '爆破提权',
         methods: ['createrole', 'createuser', 'stsassumerole'],
         created: new Date().toISOString()
       }
@@ -2709,10 +2709,17 @@ const AKSKUtilization = () => {
                       {
                         [
                           { key: 'attachpolicy', label: 'Attach Policy' },
+                          { key: 'putuserpolicy', label: 'Put User Policy' },
                           { key: 'createrole', label: 'Create Role' },
                           { key: 'createuser', label: 'Create User' },
                           { key: 'passrole', label: 'Pass Role' },
-                          { key: 'stsassumerole', label: 'STS Assume Role' }
+                          { key: 'stsassumerole', label: 'STS Assume Role' },
+                          { key: 'createpolicyversion', label: 'Create Policy Version' },
+                          { key: 'setdefaultpolicyversion', label: 'Set Default Policy Version' },
+                          { key: 'runinstances', label: 'EC2 RunInstances with IAM Role' },
+                          { key: 'createaccesskey', label: 'Create Access Key' },
+                          { key: 'createloginprofile', label: 'Create Login Profile' },
+                          { key: 'updateloginprofile', label: 'Update Login Profile' }
                         ].map(method => (
                           <Option key={method.key} value={method.key} label={method.label}>
                             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -3017,10 +3024,17 @@ const AKSKUtilization = () => {
               {
                 [
                   { key: 'attachpolicy', label: 'Attach Policy' },
+                  { key: 'putuserpolicy', label: 'Put User Policy' },
                   { key: 'createrole', label: 'Create Role' },
                   { key: 'createuser', label: 'Create User' },
                   { key: 'passrole', label: 'Pass Role' },
-                  { key: 'stsassumerole', label: 'STS Assume Role' }
+                  { key: 'stsassumerole', label: 'STS Assume Role' },
+                  { key: 'createpolicyversion', label: 'Create Policy Version' },
+                  { key: 'setdefaultpolicyversion', label: 'Set Default Policy Version' },
+                  { key: 'runinstances', label: 'EC2 RunInstances with IAM Role' },
+                  { key: 'createaccesskey', label: 'Create Access Key' },
+                  { key: 'createloginprofile', label: 'Create Login Profile' },
+                  { key: 'updateloginprofile', label: 'Update Login Profile' }
                 ].map(method => (
                   <Option key={method.key} value={method.key}>{method.label}</Option>
                 ))

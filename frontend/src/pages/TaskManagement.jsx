@@ -316,11 +316,11 @@ const TaskManagement = () => {
                   >
                     <div>
                       {[
-                        { key: 'iam_role', label: 'IAM角色提升' },
-                        { key: 'policy_escalation', label: '策略权限提升' },
-                        { key: 'service_account', label: '服务账户提升' },
-                        { key: 'access_key', label: '访问密钥提升' },
-                        { key: 'sts_assume_role', label: 'STS角色假设' }
+                        { key: 'attachpolicy', label: 'Attach Policy' },
+                        { key: 'putuserpolicy', label: 'Put User Policy' },
+                        { key: 'createrole', label: 'Create Role' },
+                        { key: 'assumerole', label: 'Assume Role' },
+                        { key: 'instanceprofile', label: 'Instance Profile' }
                       ].map(method => (
                         <Tag
                           key={method.key}
