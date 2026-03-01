@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchCredentials } from '../store/credentialSlice'
-import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin, Badge } from 'antd'
+import { Typography, Card, Button, Select, Table, Tabs, Form, Input, Modal, message, Alert, Spin, Badge, Tag } from 'antd'
 import { CloudOutlined, KeyOutlined, SearchOutlined, PlayCircleOutlined, SafetyOutlined, LaptopOutlined, DownloadOutlined, LockOutlined, AppstoreOutlined, DatabaseOutlined, CloudServerOutlined, FolderOpenOutlined, UserOutlined, BuildOutlined } from '@ant-design/icons'
 import axios from 'axios'
 
@@ -48,6 +48,33 @@ const AKSKUtilization = () => {
   const [downloadTasks, setDownloadTasks] = useState([])
   const [enumerationProgresses, setEnumerationProgresses] = useState({})
   const [enumerationStatus, setEnumerationStatus] = useState('')
+  const [selectedEscalationMethods, setSelectedEscalationMethods] = useState([])
+  
+  // 权限提升方法组管理
+  const [escalationGroups, setEscalationGroups] = useState(() => {
+    // 内置默认权限提升方法组
+    const defaultGroups = [
+      {
+        id: '1',
+        name: '基础提权',
+        methods: ['attachpolicy', 'passrole'],
+        created: new Date().toISOString()
+      },
+      {
+        id: '2',
+        name: '高级提权',
+        methods: ['createrole', 'createuser', 'stsassumerole'],
+        created: new Date().toISOString()
+      }
+    ]
+    // 强制更新localStorage，确保默认方法组存在
+    localStorage.setItem('escalationGroups', JSON.stringify(defaultGroups))
+    return defaultGroups
+  })
+  const [selectedEscalationGroup, setSelectedEscalationGroup] = useState(null)
+  const [showEscalationGroupModal, setShowEscalationGroupModal] = useState(false)
+  const [currentEscalationGroup, setCurrentEscalationGroup] = useState({ name: '', methods: [] })
+  const [isEditingEscalationGroup, setIsEditingEscalationGroup] = useState(false)
   
   // 资源组管理
   const [resourceGroups, setResourceGroups] = useState(() => {
@@ -1757,11 +1784,17 @@ const AKSKUtilization = () => {
       return
     }
 
+    if (selectedEscalationMethods.length === 0) {
+      message.warning('请选择至少一种权限提升方法')
+      return
+    }
+
     setLoading(true)
     try {
       // 调用真实 API
       const response = await api.post('/cloud/escalate', {
-        credential_id: selectedCredential.id
+        credential_id: selectedCredential.id,
+        escalation_methods: selectedEscalationMethods
       })
       
       // 处理响应数据
@@ -1921,6 +1954,58 @@ const AKSKUtilization = () => {
     setSelectedResourceGroup(group.id)
     setSelectedResourceTypes(group.resources)
     message.success(`已选择资源组: ${group.name}`)
+  }
+  
+  // 保存权限提升方法组
+  const handleSaveEscalationGroup = () => {
+    if (!currentEscalationGroup.name || currentEscalationGroup.methods.length === 0) {
+      message.warning('请输入方法组名称并选择至少一个提权方法')
+      return
+    }
+
+    let updatedGroups
+    if (isEditingEscalationGroup) {
+      updatedGroups = escalationGroups.map(group => 
+        group.id === currentEscalationGroup.id ? currentEscalationGroup : group
+      )
+    } else {
+      const newGroup = {
+        id: Date.now().toString(),
+        name: currentEscalationGroup.name,
+        methods: currentEscalationGroup.methods,
+        created: new Date().toISOString()
+      }
+      updatedGroups = [...escalationGroups, newGroup]
+    }
+
+    setEscalationGroups(updatedGroups)
+    localStorage.setItem('escalationGroups', JSON.stringify(updatedGroups))
+    setShowEscalationGroupModal(false)
+    setCurrentEscalationGroup({ name: '', methods: [] })
+    setIsEditingEscalationGroup(false)
+    message.success(isEditingEscalationGroup ? '方法组更新成功' : '方法组创建成功')
+  }
+
+  // 编辑权限提升方法组
+  const handleEditEscalationGroup = (group) => {
+    setCurrentEscalationGroup({ ...group })
+    setIsEditingEscalationGroup(true)
+    setShowEscalationGroupModal(true)
+  }
+
+  // 删除权限提升方法组
+  const handleDeleteEscalationGroup = (groupId) => {
+    const updatedGroups = escalationGroups.filter(group => group.id !== groupId)
+    setEscalationGroups(updatedGroups)
+    localStorage.setItem('escalationGroups', JSON.stringify(updatedGroups))
+    message.success('方法组删除成功')
+  }
+
+  // 使用权限提升方法组
+  const handleUseEscalationGroup = (group) => {
+    setSelectedEscalationGroup(group.id)
+    setSelectedEscalationMethods(group.methods)
+    message.success(`已选择方法组: ${group.name}`)
   }
 
 
@@ -2548,12 +2633,105 @@ const AKSKUtilization = () => {
             {/* 权限提升 */}
             <TabPane tab="权限提升" key="escalation">
               <div style={{ marginBottom: 16 }}>
+                {/* 权限提升方法组管理 */}
+                <div style={{ marginBottom: 16, padding: 16, backgroundColor: '#f0f2f5', borderRadius: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                    <Text strong>权限提升方法组管理</Text>
+                    <Button 
+                      type="dashed" 
+                      onClick={() => {
+                        setCurrentEscalationGroup({ name: '', methods: [] })
+                        setIsEditingEscalationGroup(false)
+                        setShowEscalationGroupModal(true)
+                      }}
+                    >
+                      创建方法组
+                    </Button>
+                  </div>
+                  
+                  {escalationGroups.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+                      {escalationGroups.map(group => (
+                        <Card 
+                          key={group.id}
+                          style={{ width: 200, marginBottom: 8 }}
+                          hoverable
+                          actions={[
+                            <Button 
+                              key="use" 
+                              size="small" 
+                              onClick={() => handleUseEscalationGroup(group)}
+                              type={selectedEscalationGroup === group.id ? "primary" : "default"}
+                            >
+                              使用
+                            </Button>,
+                            <Button 
+                              key="edit" 
+                              size="small" 
+                              onClick={() => handleEditEscalationGroup(group)}
+                            >
+                              编辑
+                            </Button>,
+                            <Button 
+                              key="delete" 
+                              size="small" 
+                              danger 
+                              onClick={() => handleDeleteEscalationGroup(group.id)}
+                            >
+                              删除
+                            </Button>
+                          ]}
+                        >
+                          <Card.Meta 
+                            title={group.name}
+                            description={`包含 ${group.methods.length} 个提权方法`}
+                          />
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Text type="secondary">暂无方法组，点击"创建方法组"按钮创建</Text>
+                  )}
+                </div>
+                
+                {/* 权限提升方法选择 */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
+                    <Text strong style={{ marginRight: 16 }}>选择权限提升方法：</Text>
+                    <Select
+                      style={{ flex: 1, maxWidth: 400, marginRight: 16 }}
+                      mode="multiple"
+                      placeholder="选择要使用的提权方法"
+                      value={selectedEscalationMethods}
+                      onChange={setSelectedEscalationMethods}
+                      optionLabelProp="label"
+                    >
+                      {
+                        [
+                          { key: 'attachpolicy', label: 'Attach Policy' },
+                          { key: 'createrole', label: 'Create Role' },
+                          { key: 'createuser', label: 'Create User' },
+                          { key: 'passrole', label: 'Pass Role' },
+                          { key: 'stsassumerole', label: 'STS Assume Role' }
+                        ].map(method => (
+                          <Option key={method.key} value={method.key} label={method.label}>
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              <div style={{ marginRight: 8 }}>{method.label}</div>
+                            </div>
+                          </Option>
+                        ))
+                      }
+                    </Select>
+                  </div>
+                </div>
+                
                 <Button 
                   type="primary" 
                   icon={<PlayCircleOutlined />}
                   onClick={handlePrivilegeEscalation}
                   loading={loading}
                   style={{ marginBottom: 16 }}
+                  disabled={selectedEscalationMethods.length === 0}
                 >
                   执行权限提升
                 </Button>
@@ -2801,6 +2979,58 @@ const AKSKUtilization = () => {
           {currentGroup.resources.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <Text type="secondary">已选择 {currentGroup.resources.length} 个资源类型</Text>
+            </div>
+          )}
+        </Form>
+      </Modal>
+      
+      {/* 权限提升方法组创建/编辑模态框 */}
+      <Modal
+        title={isEditingEscalationGroup ? '编辑方法组' : '创建方法组'}
+        open={showEscalationGroupModal}
+        onOk={handleSaveEscalationGroup}
+        onCancel={() => setShowEscalationGroupModal(false)}
+      >
+        <Form layout="vertical">
+          <Form.Item
+            label="方法组名称"
+            rules={[{ required: true, message: '请输入方法组名称' }]}
+          >
+            <Input
+              value={currentEscalationGroup.name}
+              onChange={(e) => setCurrentEscalationGroup({ ...currentEscalationGroup, name: e.target.value })}
+              placeholder="请输入方法组名称"
+            />
+          </Form.Item>
+          
+          <Form.Item
+            label="选择提权方法"
+            rules={[{ required: true, message: '请选择至少一个提权方法' }]}
+          >
+            <Select
+              mode="multiple"
+              style={{ width: '100%' }}
+              placeholder="选择提权方法"
+              value={currentEscalationGroup.methods}
+              onChange={(methods) => setCurrentEscalationGroup({ ...currentEscalationGroup, methods })}
+            >
+              {
+                [
+                  { key: 'attachpolicy', label: 'Attach Policy' },
+                  { key: 'createrole', label: 'Create Role' },
+                  { key: 'createuser', label: 'Create User' },
+                  { key: 'passrole', label: 'Pass Role' },
+                  { key: 'stsassumerole', label: 'STS Assume Role' }
+                ].map(method => (
+                  <Option key={method.key} value={method.key}>{method.label}</Option>
+                ))
+              }
+            </Select>
+          </Form.Item>
+          
+          {currentEscalationGroup.methods.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <Text type="secondary">已选择 {currentEscalationGroup.methods.length} 个提权方法</Text>
             </div>
           )}
         </Form>

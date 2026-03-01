@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { fetchTasks, createTask, fetchTaskDetails, fetchTaskResults, deleteTask, deleteAllTasks, clearError, clearCurrentTask } from '../store/taskSlice'
 import { fetchCredentials } from '../store/credentialSlice'
-import { Typography, Card, Button, Table, Modal, Form, Select, message, Alert, Tabs, Descriptions, List, Badge } from 'antd'
+import { Typography, Card, Button, Table, Modal, Form, Select, message, Alert, Tabs, Descriptions, List, Badge, Tag } from 'antd'
 import { PlusOutlined, PlayCircleOutlined, StopOutlined, DeleteOutlined, AppstoreOutlined, BarChartOutlined, CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
 
 const { Title, Text } = Typography
@@ -17,6 +17,7 @@ const TaskManagement = () => {
   const [selectedTask, setSelectedTask] = useState(null)
   const [isDetailVisible, setIsDetailVisible] = useState(false)
   const [form] = Form.useForm()
+  const [selectedEscalationMethods, setSelectedEscalationMethods] = useState([])
 
   useEffect(() => {
     dispatch(fetchTasks())
@@ -187,7 +188,17 @@ const TaskManagement = () => {
     const { parameters, ...taskData } = values
     // 将credentialId转换为数字类型
     taskData.credentialId = parseInt(taskData.credentialId)
+    
+    // 如果是权限提升任务，添加提升方法
+    if (taskData.taskType === 'escalate') {
+      taskData.parameters = JSON.stringify({
+        escalation_methods: selectedEscalationMethods
+      })
+    }
+    
     dispatch(createTask(taskData))
+    // 重置选中的提升方法
+    setSelectedEscalationMethods([])
     setIsModalVisible(false)
   }
 
@@ -288,6 +299,50 @@ const TaskManagement = () => {
               <Option value="operate">资源操作</Option>
               <Option value="takeover">平台接管</Option>
             </Select>
+          </Form.Item>
+
+          {/* 权限提升方法选择 */}
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.taskType !== currentValues.taskType}
+          >
+            {({ getFieldValue }) => {
+              const taskType = getFieldValue('taskType');
+              if (taskType === 'escalate') {
+                return (
+                  <Form.Item
+                    label="权限提升方法"
+                    rules={[{ required: true, message: '请选择至少一种权限提升方法' }]}
+                  >
+                    <div>
+                      {[
+                        { key: 'iam_role', label: 'IAM角色提升' },
+                        { key: 'policy_escalation', label: '策略权限提升' },
+                        { key: 'service_account', label: '服务账户提升' },
+                        { key: 'access_key', label: '访问密钥提升' },
+                        { key: 'sts_assume_role', label: 'STS角色假设' }
+                      ].map(method => (
+                        <Tag
+                          key={method.key}
+                          color={selectedEscalationMethods.includes(method.key) ? 'blue' : 'default'}
+                          onClick={() => {
+                            if (selectedEscalationMethods.includes(method.key)) {
+                              setSelectedEscalationMethods(selectedEscalationMethods.filter(item => item !== method.key));
+                            } else {
+                              setSelectedEscalationMethods([...selectedEscalationMethods, method.key]);
+                            }
+                          }}
+                          style={{ margin: '4px', cursor: 'pointer' }}
+                        >
+                          {method.label}
+                        </Tag>
+                      ))}
+                    </div>
+                  </Form.Item>
+                );
+              }
+              return null;
+            }}
           </Form.Item>
 
           <Form.Item style={{ textAlign: 'right' }}>
