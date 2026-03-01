@@ -135,6 +135,41 @@ func (p *StaticCredentialsProvider) Retrieve(ctx context.Context) (aws.Credentia
 
 // EnumerateResources 枚举AWS资源
 func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interface{}, error) {
+	// 验证凭证是否有效
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// 创建STS客户端来验证凭证
+	// 从ec2客户端获取配置
+	region := p.region
+	if region == "" {
+		// 如果区域为空，使用默认区域
+		region = "us-east-1"
+	}
+
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+		config.WithCredentialsProvider(&StaticCredentialsProvider{
+			Value:  p.accessKey,
+			Secret: p.secretKey,
+		}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load AWS config: %v", err)
+	}
+
+	stsClient := sts.NewFromConfig(cfg)
+	_, err = stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{})
+	if err != nil {
+		// 检查是否是无效的客户端令牌错误
+		errorStr := err.Error()
+		if strings.Contains(errorStr, "InvalidClientTokenId") {
+			return nil, fmt.Errorf("InvalidClientTokenId: %v", err)
+		}
+		// 其他严重错误也直接返回
+		return nil, fmt.Errorf("Failed to validate credentials: %v", err)
+	}
+
 	result := make(map[string]interface{})
 	errors := []string{}
 
@@ -2108,8 +2143,8 @@ func (p *AWSProvider) enumerateSQSQueues() ([]interface{}, error) {
 	return queues, nil
 }
 
-// EscalatePrivileges 权限提升
-func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
+// AnalyzePermissions 权限分析
+func (p *AWSProvider) AnalyzePermissions() (map[string]interface{}, error) {
 	// 创建带有超时的上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -2117,6 +2152,15 @@ func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
 	// 调用IAM GetUser API获取用户信息
 	input := &iam.GetUserInput{}
 	response, err := p.iamClient.GetUser(ctx, input)
+
+	// 检查是否是无效的客户端令牌错误
+	if err != nil {
+		errorStr := err.Error()
+		if strings.Contains(errorStr, "InvalidClientTokenId") {
+			// 对于无效的客户端令牌，直接返回错误
+			return nil, fmt.Errorf("InvalidClientTokenId: %v", err)
+		}
+	}
 
 	userType := "IAM User"
 	userName := "Unknown"
@@ -2154,6 +2198,9 @@ func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
 				"Insufficient permissions to analyze",
 			}
 			riskLevel = "Unknown"
+		} else {
+			// 其他错误，直接返回错误
+			return nil, fmt.Errorf("Error during permission analysis: %v", err)
 		}
 	} else {
 		// 是IAM用户
@@ -2247,7 +2294,7 @@ func (p *AWSProvider) EscalatePrivileges() (map[string]interface{}, error) {
 		"permissions":         permissions,
 		"potentialEscalation": potentialEscalation,
 		"riskLevel":           riskLevel,
-		"message":             "Privilege escalation attempted",
+		"message":             "Permission analysis completed",
 		"actions": []string{
 			"Checked IAM policies",
 			"Checked EC2 instance profiles",

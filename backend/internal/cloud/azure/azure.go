@@ -175,12 +175,12 @@ func (p *AzureProvider) enumerateRoleAssignments() ([]interface{}, error) {
 	}, nil
 }
 
-// EscalatePrivileges 权限提升
-func (p *AzureProvider) EscalatePrivileges() (map[string]interface{}, error) {
-	// 这里应该实现Azure权限提升逻辑
+// AnalyzePermissions 权限分析
+func (p *AzureProvider) AnalyzePermissions() (map[string]interface{}, error) {
+	// 这里应该实现Azure权限分析逻辑
 	// 暂时返回模拟数据
 	return map[string]interface{}{
-		"message": "Privilege escalation attempted",
+		"message": "Permission analysis completed",
 		"actions": []string{
 			"Checked role assignments",
 			"Checked VM managed identities",

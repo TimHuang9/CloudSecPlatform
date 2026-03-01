@@ -71,7 +71,7 @@ func SetupRouter(db *gorm.DB, redisClient *redis.Client, cfg *config.Config) *gi
 
 		// 云平台操作
 		authGroup.POST("/cloud/enumerate", enumerateResourcesHandler(db))
-		authGroup.POST("/cloud/escalate", escalatePrivilegesHandler(db))
+		authGroup.POST("/cloud/analyze", analyzePermissionsHandler(db))
 		authGroup.POST("/cloud/operate", operateResourceHandler(db))
 		authGroup.POST("/cloud/takeover", takeoverCloudHandler(db))
 		authGroup.POST("/cloud/userinfo", getUserInfoHandler(db))
@@ -758,7 +758,7 @@ func enumerateResourcesHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
+func analyzePermissionsHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("userID")
 		if !exists {
@@ -789,10 +789,10 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// 权限提升
-		result, err := provider.EscalatePrivileges()
+		// 权限分析
+		result, err := provider.AnalyzePermissions()
 		if err != nil {
-			c.JSON(500, gin.H{"error": "Failed to escalate privileges: " + err.Error()})
+			c.JSON(500, gin.H{"error": "Failed to analyze permissions: " + err.Error()})
 			return
 		}
 
@@ -805,7 +805,7 @@ func escalatePrivilegesHandler(db *gorm.DB) gin.HandlerFunc {
 		task := database.Task{
 			UserID:       userID.(uint),
 			CredentialID: input.CredentialID,
-			TaskType:     "escalate",
+			TaskType:     "analyze",
 			Status:       "completed",
 			Parameters:   string(parameters),
 			StartTime:    time.Now().Format(time.RFC3339),

@@ -114,8 +114,8 @@ func (w *Worker) processTask(taskIDStr string) {
 		}
 		result, err = provider.EnumerateResources(resourceType)
 
-	case "escalate":
-		result, err = provider.EscalatePrivileges()
+	case "analyze":
+		result, err = provider.AnalyzePermissions()
 
 	case "operate":
 		resourceType, ok1 := params["resource_type"].(string)

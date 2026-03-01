@@ -177,9 +177,9 @@ func (p *AliyunProvider) enumerateRAMRoles() ([]interface{}, error) {
 	}, nil
 }
 
-// EscalatePrivileges 权限提升
-func (p *AliyunProvider) EscalatePrivileges() (map[string]interface{}, error) {
-	// 这里应该实现阿里云权限提升逻辑
+// AnalyzePermissions 权限分析
+func (p *AliyunProvider) AnalyzePermissions() (map[string]interface{}, error) {
+	// 这里应该实现阿里云权限分析逻辑
 	// 返回前端期望的数据结构
 	return map[string]interface{}{
 		"user": "Aliyun RAM User",
@@ -198,7 +198,7 @@ func (p *AliyunProvider) EscalatePrivileges() (map[string]interface{}, error) {
 			"Access OSS buckets with sensitive data",
 		},
 		"riskLevel": "Medium",
-		"message":   "Privilege escalation attempted",
+		"message":   "Permission analysis completed",
 		"actions": []string{
 			"Checked RAM policies",
 			"Checked ECS instance roles",

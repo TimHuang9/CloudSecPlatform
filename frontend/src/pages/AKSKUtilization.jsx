@@ -48,7 +48,6 @@ const AKSKUtilization = () => {
   const [downloadTasks, setDownloadTasks] = useState([])
   const [enumerationProgresses, setEnumerationProgresses] = useState({})
   const [enumerationStatus, setEnumerationStatus] = useState('')
-  const [userInfo, setUserInfo] = useState({})
   
   // 资源组管理
   const [resourceGroups, setResourceGroups] = useState(() => {
@@ -1485,7 +1484,7 @@ const AKSKUtilization = () => {
     setLoading(true)
     try {
       // 调用真实 API
-      const response = await api.post('/cloud/escalate', {
+      const response = await api.post('/cloud/analyze', {
         credential_id: selectedCredential.id
       })
       
@@ -1720,36 +1719,7 @@ const AKSKUtilization = () => {
     }
   }
 
-  // 获取用户信息
-  const handleGetUserInfo = async () => {
-    if (!selectedCredential) {
-      message.warning('请选择凭证')
-      return
-    }
 
-    setLoading(true)
-    try {
-      // 调用真实 API 获取用户信息
-      const response = await api.post('/cloud/userinfo', {
-        credential_id: selectedCredential.id
-      })
-      
-      // 处理响应数据
-      if (response.data && response.data.result) {
-        setUserInfo(response.data.result)
-        message.success('获取用户信息成功')
-      } else {
-        setUserInfo({})
-        message.warning('无法获取用户信息')
-      }
-    } catch (error) {
-      console.error('获取用户信息失败:', error)
-      message.error('获取用户信息失败: ' + (error.response?.data?.error || '未知错误'))
-      setUserInfo({})
-    } finally {
-      setLoading(false)
-    }
-  }
 
   // 保存资源组
   const handleSaveResourceGroup = () => {
@@ -2468,51 +2438,7 @@ const AKSKUtilization = () => {
               </div>
             </TabPane>
             
-            {/* 用户信息 */}
-            <TabPane tab="用户信息" key="userinfo">
-              <div style={{ marginBottom: 16 }}>
-                <Button 
-                  type="primary" 
-                  icon={<UserOutlined />}
-                  onClick={handleGetUserInfo}
-                  loading={loading}
-                  style={{ marginBottom: 16 }}
-                >
-                  获取用户信息
-                </Button>
-                
-                {Object.keys(userInfo).length > 0 ? (
-                  <div style={{ backgroundColor: '#f5f5f5', padding: '16px', borderRadius: '4px' }}>
-                    <h3>用户信息</h3>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>用户类型：</Text> {userInfo.userType || 'Unknown'}
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>用户名：</Text> {userInfo.userName || 'Unknown'}
-                    </div>
-                    <div style={{ marginBottom: '12px' }}>
-                      <Text strong>权限：</Text>
-                      <div style={{ marginLeft: '20px', marginTop: '8px' }}>
-                        {userInfo.permissions && Array.isArray(userInfo.permissions) ? (
-                          userInfo.permissions.map((perm, index) => (
-                            <div key={index} style={{ marginBottom: '4px' }}>• {perm}</div>
-                          ))
-                        ) : (
-                          <div>暂无权限信息</div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <Text strong>消息：</Text> {userInfo.message || ''}
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                    <Text type="secondary">请点击"获取用户信息"按钮获取用户信息</Text>
-                  </div>
-                )}
-              </div>
-            </TabPane>
+
 
 
 
