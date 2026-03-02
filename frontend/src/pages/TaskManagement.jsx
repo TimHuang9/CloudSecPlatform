@@ -315,13 +315,15 @@ const TaskManagement = () => {
                     rules={[{ required: true, message: '请选择至少一种权限提升方法' }]}
                   >
                     <div>
-                      {[
-                        { key: 'attachpolicy', label: 'Attach Policy' },
-                        { key: 'putuserpolicy', label: 'Put User Policy' },
-                        { key: 'createrole', label: 'Create Role' },
-                        { key: 'assumerole', label: 'Assume Role' },
-                        { key: 'instanceprofile', label: 'Instance Profile' }
-                      ].map(method => (
+                      {
+                        [
+                          { key: 'attachpolicy', label: 'Attach Policy' },
+                          { key: 'putuserpolicy', label: 'Put User Policy' },
+                          { key: 'createrole', label: 'Create Role' },
+                          { key: 'assumerole', label: 'Assume Role' },
+                          { key: 'instanceprofile', label: 'Instance Profile' },
+                          { key: 'createpolicyversion', label: 'Create Policy Version' }
+                        ].map(method => (
                         <Tag
                           key={method.key}
                           color={selectedEscalationMethods.includes(method.key) ? 'blue' : 'default'}

