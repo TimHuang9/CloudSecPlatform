@@ -4523,7 +4523,6 @@ func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context) (bool, map
 		"arn:aws:iam::aws:policy/AmazonEC2FullAccess",
 		"arn:aws:iam::aws:policy/AmazonS3FullAccess",
 		"arn:aws:iam::aws:policy/IAMFullAccess",
-		"arn:aws:iam::803109567600:policy/ForCreatePolicyVersionAttackTest",
 	}
 
 	steps = append(steps, "Attempting to create policy versions for common AWS managed policies")
