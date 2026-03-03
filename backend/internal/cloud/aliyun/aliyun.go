@@ -257,7 +257,7 @@ func (p *AliyunProvider) ValidateCredentials() (bool, error) {
 }
 
 // EscalatePrivileges 权限提升 - 使用暴力枚举方法尝试不同的提权策略
-func (p *AliyunProvider) EscalatePrivileges(escalationMethods []string) (map[string]interface{}, error) {
+func (p *AliyunProvider) EscalatePrivileges(escalationMethods []string, policyARN string, extraParams map[string]interface{}) (map[string]interface{}, error) {
 	// 结果集
 	successfulStrategies := []string{}
 	failedStrategies := []string{}

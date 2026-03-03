@@ -189,10 +189,12 @@ const TaskManagement = () => {
     // 将credentialId转换为数字类型
     taskData.credentialId = parseInt(taskData.credentialId)
     
-    // 如果是权限提升任务，添加提升方法
+    // 如果是权限提升任务，添加提升方法和策略 ARN
     if (taskData.taskType === 'escalate') {
+      const policyArn = document.getElementById('policyArnValue') ? document.getElementById('policyArnValue').value : '';
       taskData.parameters = JSON.stringify({
-        escalation_methods: selectedEscalationMethods
+        escalation_methods: selectedEscalationMethods,
+        policy_arn: policyArn
       })
     }
     
@@ -310,37 +312,57 @@ const TaskManagement = () => {
               const taskType = getFieldValue('taskType');
               if (taskType === 'escalate') {
                 return (
-                  <Form.Item
-                    label="权限提升方法"
-                    rules={[{ required: true, message: '请选择至少一种权限提升方法' }]}
-                  >
-                    <div>
-                      {
-                        [
-                          { key: 'attachpolicy', label: 'Attach Policy' },
-                          { key: 'putuserpolicy', label: 'Put User Policy' },
-                          { key: 'createrole', label: 'Create Role' },
-                          { key: 'assumerole', label: 'Assume Role' },
-                          { key: 'instanceprofile', label: 'Instance Profile' },
-                          { key: 'createpolicyversion', label: 'Create Policy Version' }
-                        ].map(method => (
-                        <Tag
-                          key={method.key}
-                          color={selectedEscalationMethods.includes(method.key) ? 'blue' : 'default'}
-                          onClick={() => {
-                            if (selectedEscalationMethods.includes(method.key)) {
-                              setSelectedEscalationMethods(selectedEscalationMethods.filter(item => item !== method.key));
-                            } else {
-                              setSelectedEscalationMethods([...selectedEscalationMethods, method.key]);
-                            }
+                  <div>
+                    <Form.Item
+                      label="权限提升方法"
+                      rules={[{ required: true, message: '请选择至少一种权限提升方法' }]}
+                    >
+                      <div>
+                        {
+                          [
+                            { key: 'attachpolicy', label: 'Attach Policy' },
+                            { key: 'putuserpolicy', label: 'Put User Policy' },
+                            { key: 'createrole', label: 'Create Role' },
+                            { key: 'assumerole', label: 'Assume Role' },
+                            { key: 'instanceprofile', label: 'Instance Profile' },
+                            { key: 'createpolicyversion', label: 'Create Policy Version' }
+                          ].map(method => (
+                          <Tag
+                            key={method.key}
+                            color={selectedEscalationMethods.includes(method.key) ? 'blue' : 'default'}
+                            onClick={() => {
+                              if (selectedEscalationMethods.includes(method.key)) {
+                                setSelectedEscalationMethods(selectedEscalationMethods.filter(item => item !== method.key));
+                              } else {
+                                setSelectedEscalationMethods([...selectedEscalationMethods, method.key]);
+                              }
+                            }}
+                            style={{ margin: '4px', cursor: 'pointer' }}
+                          >
+                            {method.label}
+                          </Tag>
+                        ))}
+                      </div>
+                    </Form.Item>
+                    
+                    {/* 当选择 createpolicyversion 时显示 ARN 输入框 */}
+                    {selectedEscalationMethods.includes('createpolicyversion') && (
+                      <Form.Item
+                        label="策略 ARN"
+                        rules={[{ required: true, message: '请输入要提权的策略 ARN' }]}
+                      >
+                        <input 
+                          placeholder="例如：arn:aws:iam::123456789012:policy/MyPolicy" 
+                          id="policyArn"
+                          onChange={(e) => {
+                            // 存储策略 ARN
+                            document.getElementById('policyArnValue').value = e.target.value;
                           }}
-                          style={{ margin: '4px', cursor: 'pointer' }}
-                        >
-                          {method.label}
-                        </Tag>
-                      ))}
-                    </div>
-                  </Form.Item>
+                        />
+                        <input type="hidden" id="policyArnValue" />
+                      </Form.Item>
+                    )}
+                  </div>
                 );
               }
               return null;
