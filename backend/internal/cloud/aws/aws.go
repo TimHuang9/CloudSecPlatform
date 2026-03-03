@@ -401,6 +401,234 @@ func (p *AWSProvider) EnumerateResources(resourceType string) (map[string]interf
 			result["routeTables"] = []interface{}{}
 		}
 
+	case "subnet":
+		// 枚举子网资源
+		var allSubnets []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Subnet (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Subnet client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的子网
+			subnets, err := regionProvider.enumerateSubnets()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Subnet (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Subnets in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的子网添加到总列表
+			for _, subnet := range subnets {
+				// 添加区域信息
+				if subnetMap, ok := subnet.(map[string]interface{}); ok {
+					subnetMap["region"] = region
+					allSubnets = append(allSubnets, subnetMap)
+				}
+			}
+		}
+
+		if len(allSubnets) > 0 {
+			result["subnets"] = allSubnets
+		} else {
+			result["subnets"] = []interface{}{}
+		}
+
+	case "securitygroup":
+		// 枚举安全组资源
+		var allSecurityGroups []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Security Group (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Security Group client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的安全组
+			securityGroups, err := regionProvider.enumerateSecurityGroups()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Security Group (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Security Groups in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的安全组添加到总列表
+			for _, sg := range securityGroups {
+				// 添加区域信息
+				if sgMap, ok := sg.(map[string]interface{}); ok {
+					sgMap["region"] = region
+					allSecurityGroups = append(allSecurityGroups, sgMap)
+				}
+			}
+		}
+
+		if len(allSecurityGroups) > 0 {
+			result["securityGroups"] = allSecurityGroups
+		} else {
+			result["securityGroups"] = []interface{}{}
+		}
+
+	case "networkacl":
+		// 枚举网络ACL资源
+		var allNetworkACLs []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Network ACL (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Network ACL client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的网络ACL
+			networkACLs, err := regionProvider.enumerateNetworkACLs()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Network ACL (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Network ACLs in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的网络ACL添加到总列表
+			for _, nacl := range networkACLs {
+				// 添加区域信息
+				if naclMap, ok := nacl.(map[string]interface{}); ok {
+					naclMap["region"] = region
+					allNetworkACLs = append(allNetworkACLs, naclMap)
+				}
+			}
+		}
+
+		if len(allNetworkACLs) > 0 {
+			result["networkACLs"] = allNetworkACLs
+		} else {
+			result["networkACLs"] = []interface{}{}
+		}
+
+	case "internetgateway":
+		// 枚举互联网网关资源
+		var allInternetGateways []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Internet Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Internet Gateway client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的互联网网关
+			internetGateways, err := regionProvider.enumerateInternetGateways()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Internet Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Internet Gateways in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的互联网网关添加到总列表
+			for _, igw := range internetGateways {
+				// 添加区域信息
+				if igwMap, ok := igw.(map[string]interface{}); ok {
+					igwMap["region"] = region
+					allInternetGateways = append(allInternetGateways, igwMap)
+				}
+			}
+		}
+
+		if len(allInternetGateways) > 0 {
+			result["internetGateways"] = allInternetGateways
+		} else {
+			result["internetGateways"] = []interface{}{}
+		}
+
+	case "virtualprivategateway":
+		// 枚举虚拟专用网关资源
+		var allVirtualPrivateGateways []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("Virtual Private Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create Virtual Private Gateway client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的虚拟专用网关
+			virtualPrivateGateways, err := regionProvider.enumerateVirtualPrivateGateways()
+			if err != nil {
+				errorMsg := fmt.Sprintf("Virtual Private Gateway (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate Virtual Private Gateways in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的虚拟专用网关添加到总列表
+			for _, vpg := range virtualPrivateGateways {
+				// 添加区域信息
+				if vpgMap, ok := vpg.(map[string]interface{}); ok {
+					vpgMap["region"] = region
+					allVirtualPrivateGateways = append(allVirtualPrivateGateways, vpgMap)
+				}
+			}
+		}
+
+		if len(allVirtualPrivateGateways) > 0 {
+			result["virtualPrivateGateways"] = allVirtualPrivateGateways
+		} else {
+			result["virtualPrivateGateways"] = []interface{}{}
+		}
+
+	case "vpn":
+		// 枚举VPN连接资源
+		var allVPNConnections []interface{}
+		for _, region := range regions {
+			// 创建该区域的客户端
+			regionProvider, err := NewAWSProvider(p.accessKey, p.secretKey, region)
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPN Connection (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to create VPN Connection client for region %s: %v\n", region, err)
+				continue
+			}
+
+			// 枚举该区域的VPN连接
+			vpnConnections, err := regionProvider.enumerateVPNConnections()
+			if err != nil {
+				errorMsg := fmt.Sprintf("VPN Connection (%s): %v", region, err)
+				errors = append(errors, errorMsg)
+				fmt.Printf("Warning: Failed to enumerate VPN Connections in region %s: %v\n", region, err)
+				continue
+			}
+
+			// 将该区域的VPN连接添加到总列表
+			for _, vpn := range vpnConnections {
+				// 添加区域信息
+				if vpnMap, ok := vpn.(map[string]interface{}); ok {
+					vpnMap["region"] = region
+					allVPNConnections = append(allVPNConnections, vpnMap)
+				}
+			}
+		}
+
+		if len(allVPNConnections) > 0 {
+			result["vpnConnections"] = allVPNConnections
+		} else {
+			result["vpnConnections"] = []interface{}{}
+		}
+
 	case "elb":
 		// 枚举ELB资源
 		var allELBs []interface{}
@@ -1925,6 +2153,279 @@ func (p *AWSProvider) enumerateRouteTables() ([]interface{}, error) {
 	}
 
 	return routeTables, nil
+}
+
+// enumerateSubnets 枚举子网资源
+func (p *AWSProvider) enumerateSubnets() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取子网列表
+	input := &ec2.DescribeSubnetsInput{}
+	response, err := p.ec2Client.DescribeSubnets(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe subnets: %w", err)
+	}
+
+	var subnets []interface{}
+	for _, subnet := range response.Subnets {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range subnet.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		subnets = append(subnets, map[string]interface{}{
+			"subnetId":            *subnet.SubnetId,
+			"vpcId":               *subnet.VpcId,
+			"cidrBlock":           *subnet.CidrBlock,
+			"availabilityZone":    *subnet.AvailabilityZone,
+			"state":               string(subnet.State),
+			"mapPublicIpOnLaunch": *subnet.MapPublicIpOnLaunch,
+			"tags":                tags,
+		})
+	}
+
+	return subnets, nil
+}
+
+// enumerateSecurityGroups 枚举安全组资源
+func (p *AWSProvider) enumerateSecurityGroups() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取安全组列表
+	input := &ec2.DescribeSecurityGroupsInput{}
+	response, err := p.ec2Client.DescribeSecurityGroups(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe security groups: %w", err)
+	}
+
+	var securityGroups []interface{}
+	for _, sg := range response.SecurityGroups {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range sg.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		// 提取入站规则
+		var ingressRules []interface{}
+		for _, rule := range sg.IpPermissions {
+			ruleInfo := map[string]interface{}{
+				"ipProtocol": rule.IpProtocol,
+				"fromPort":   rule.FromPort,
+				"toPort":     rule.ToPort,
+			}
+			if len(rule.IpRanges) > 0 {
+				var ipRanges []string
+				for _, ipRange := range rule.IpRanges {
+					ipRanges = append(ipRanges, *ipRange.CidrIp)
+				}
+				ruleInfo["ipRanges"] = ipRanges
+			}
+			ingressRules = append(ingressRules, ruleInfo)
+		}
+
+		securityGroups = append(securityGroups, map[string]interface{}{
+			"groupId":      *sg.GroupId,
+			"groupName":    *sg.GroupName,
+			"description":  *sg.Description,
+			"vpcId":        sg.VpcId,
+			"ingressRules": ingressRules,
+			"tags":         tags,
+		})
+	}
+
+	return securityGroups, nil
+}
+
+// enumerateNetworkACLs 枚举网络ACL资源
+func (p *AWSProvider) enumerateNetworkACLs() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取网络ACL列表
+	input := &ec2.DescribeNetworkAclsInput{}
+	response, err := p.ec2Client.DescribeNetworkAcls(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe network ACLs: %w", err)
+	}
+
+	var networkACLs []interface{}
+	for _, nacl := range response.NetworkAcls {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range nacl.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		// 提取入站规则
+		var ingressRules []interface{}
+		for _, entry := range nacl.Entries {
+			if entry.Egress != nil && *entry.Egress {
+				continue
+			}
+			entryInfo := map[string]interface{}{
+				"ruleNumber": *entry.RuleNumber,
+				"protocol":   *entry.Protocol,
+				"ruleAction": string(entry.RuleAction),
+				"cidrBlock":  entry.CidrBlock,
+				"fromPort":   entry.PortRange.From,
+				"toPort":     entry.PortRange.To,
+			}
+			ingressRules = append(ingressRules, entryInfo)
+		}
+
+		// 提取出站规则
+		var egressRules []interface{}
+		for _, entry := range nacl.Entries {
+			if entry.Egress == nil || !*entry.Egress {
+				continue
+			}
+			entryInfo := map[string]interface{}{
+				"ruleNumber": *entry.RuleNumber,
+				"protocol":   *entry.Protocol,
+				"ruleAction": string(entry.RuleAction),
+				"cidrBlock":  entry.CidrBlock,
+				"fromPort":   entry.PortRange.From,
+				"toPort":     entry.PortRange.To,
+			}
+			egressRules = append(egressRules, entryInfo)
+		}
+
+		networkACLs = append(networkACLs, map[string]interface{}{
+			"networkAclId": *nacl.NetworkAclId,
+			"vpcId":        *nacl.VpcId,
+			"isDefault":    *nacl.IsDefault,
+			"ingressRules": ingressRules,
+			"egressRules":  egressRules,
+			"tags":         tags,
+		})
+	}
+
+	return networkACLs, nil
+}
+
+// enumerateInternetGateways 枚举互联网网关资源
+func (p *AWSProvider) enumerateInternetGateways() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取互联网网关列表
+	input := &ec2.DescribeInternetGatewaysInput{}
+	response, err := p.ec2Client.DescribeInternetGateways(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe internet gateways: %w", err)
+	}
+
+	var internetGateways []interface{}
+	for _, igw := range response.InternetGateways {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range igw.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		// 提取附加的VPC信息
+		var attachments []interface{}
+		for _, attachment := range igw.Attachments {
+			attachmentInfo := map[string]interface{}{
+				"vpcId": *attachment.VpcId,
+				"state": string(attachment.State),
+			}
+			attachments = append(attachments, attachmentInfo)
+		}
+
+		internetGateways = append(internetGateways, map[string]interface{}{
+			"internetGatewayId": *igw.InternetGatewayId,
+			"attachments":       attachments,
+			"tags":              tags,
+		})
+	}
+
+	return internetGateways, nil
+}
+
+// enumerateVirtualPrivateGateways 枚举虚拟专用网关资源
+func (p *AWSProvider) enumerateVirtualPrivateGateways() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取虚拟专用网关列表
+	input := &ec2.DescribeVpnGatewaysInput{}
+	response, err := p.ec2Client.DescribeVpnGateways(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe virtual private gateways: %w", err)
+	}
+
+	var virtualPrivateGateways []interface{}
+	for _, vpg := range response.VpnGateways {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range vpg.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		// 提取附加的VPC信息
+		var attachments []interface{}
+		for _, attachment := range vpg.VpcAttachments {
+			attachmentInfo := map[string]interface{}{
+				"vpcId": *attachment.VpcId,
+				"state": string(attachment.State),
+			}
+			attachments = append(attachments, attachmentInfo)
+		}
+
+		virtualPrivateGateways = append(virtualPrivateGateways, map[string]interface{}{
+			"vpnGatewayId": *vpg.VpnGatewayId,
+			"state":        string(vpg.State),
+			"type":         string(vpg.Type),
+			"attachments":  attachments,
+			"tags":         tags,
+		})
+	}
+
+	return virtualPrivateGateways, nil
+}
+
+// enumerateVPNConnections 枚举VPN连接资源
+func (p *AWSProvider) enumerateVPNConnections() ([]interface{}, error) {
+	// 创建带有超时的上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 调用AWS SDK获取VPN连接列表
+	input := &ec2.DescribeVpnConnectionsInput{}
+	response, err := p.ec2Client.DescribeVpnConnections(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe VPN connections: %w", err)
+	}
+
+	var vpnConnections []interface{}
+	for _, vpn := range response.VpnConnections {
+		// 构建标签映射
+		tags := make(map[string]string)
+		for _, tag := range vpn.Tags {
+			tags[*tag.Key] = *tag.Value
+		}
+
+		vpnConnections = append(vpnConnections, map[string]interface{}{
+			"vpnConnectionId":   *vpn.VpnConnectionId,
+			"state":             string(vpn.State),
+			"type":              string(vpn.Type),
+			"vpnGatewayId":      vpn.VpnGatewayId,
+			"customerGatewayId": *vpn.CustomerGatewayId,
+			"tags":              tags,
+		})
+	}
+
+	return vpnConnections, nil
 }
 
 // enumerateELBs 枚举ELB资源
